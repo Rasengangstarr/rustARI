@@ -95,15 +95,26 @@ impl Atari {
          0xD8 => self.cld(pc),
          0xF8 => self.sed(pc),
 
+         //LDX (Load X register)
          0xA2 => self.ldx(Mode::IMM, pc),
-         _ => 0,
+         0xA6 => self.ldx(Mode::ZP, pc),
+         0xB6 => self.ldx(Mode::ZPY, pc),
+         0xAE => self.ldx(Mode::ABS, pc),
+         0xBE => self.ldx(Mode::ABSY, pc),
+
+         //LDY (Load Y register)
+         0xA0 => self.ldx(Mode::IMM, pc),
+         0xA4 => self.ldx(Mode::ZP, pc),
+         0xB4 => self.ldx(Mode::ZPX, pc),
+         0xAC => self.ldx(Mode::ABS, pc),
+         0xBC => self.ldx(Mode::ABSX, pc),
+         
+         _ => panic!("INSTRUCTION NOT IMPLEMENTED: {:X?}", self.read_mem(pc)),
       };
 
       if self.pc == 0 {
          return;
       }
-
-      println!("{}", self.flags);
    }
    
    fn boot(&mut self) {
