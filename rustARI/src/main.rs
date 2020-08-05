@@ -2,8 +2,15 @@ extern crate strum;
 #[macro_use]
 extern crate strum_macros;
 
+extern crate piston_window;
+
+extern crate find_folder;
+
 use std::env;
 use std::string::ToString;
+use piston_window::*;
+
+use std::str;
 
 mod rom_read;
 mod mem_load;
@@ -115,12 +122,6 @@ impl Atari {
       if self.pc == 0 {
          return;
       }
-   }
-   
-   fn boot(&mut self) {
-      loop {
-         self.execute_step();
-      }      
    }
 
    fn set_flags(&mut self, val : u8) {
@@ -274,14 +275,59 @@ fn main() {
    println!("reading file: {}", filename);
 
    let rom = rom_read::get_file_as_byte_vec(filename);
-   let mut atari : Atari = Atari {memory: mem_load::write_rom_to_mem(rom),
+   let atari : Atari = Atari {memory: mem_load::write_rom_to_mem(rom),
                                     flags: 0,
                                     pc:0x1000,
                                     xReg: 0,
                                     yReg: 0,
                                     aReg: 0};   
+   main_loop(atari);
+}
+
+fn main_loop(mut atari : Atari) {
+
+   let mut window: PistonWindow = WindowSettings::new(
+      "rustARI",
+      [200, 200]
+  )
+  .exit_on_esc(true)
+  //.opengl(OpenGL::V2_1) // Set a different OpenGl version
+  .build()
+  .unwrap();
    
-   atari.boot();      
+   let assets = find_folder::Search::ParentsThenKids(3, 3)
+      .for_folder("assets").unwrap();
+   println!("{:?}", assets);
+   let mut glyphs = window.load_font(assets.join("consola.ttf")).unwrap();
+
+   while let Some(event) = window.next() {
+      
+      window.draw_2d(&event, |c, g, device| {
+         clear([0.0, 0.0, 0.0, 1.0], g);
+         let transform = c.transform.trans(14.0, 14.0);
+         text::Text::new_color([0.0, 1.0, 0.0, 1.0], 14).draw(
+             "NOUBDIZC",
+             &mut glyphs,
+             &c.draw_state,
+             transform, g
+         ).unwrap();
+
+         let transform = c.transform.trans(14.0, 30.0);
+         let flags_byte = atari.flags;
+         let flags_text = &format!("{:08b}", flags_byte);
+         text::Text::new_color([0.0, 1.0, 0.0, 1.0], 14).draw(
+               &flags_text,
+               &mut glyphs,
+               &c.draw_state,
+               transform, g
+         ).unwrap();
+
+         // Update glyphs before rendering.
+         glyphs.factory.encoder.flush(device);
+        });
+
+      //atari.execute_step();
+}
 }
 
 #[cfg(test)]

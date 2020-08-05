@@ -9,3 +9,6 @@ edition = "2018"
 [dependencies]
 strum = "0.18.0"
 strum_macros = "0.18.0"
+
+piston_window = "0.98.0"
+find_folder = "*"
