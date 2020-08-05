@@ -8,6 +8,8 @@ use std::string::ToString;
 mod rom_read;
 mod mem_load;
 
+const INV_ADD_PANIC : &str = "INVALID ADDRESSING MODE!!!";
+
 enum FlagWriter {
    NEG = 0b1000_0000,
    OVER = 0b0100_0000,
@@ -137,6 +139,13 @@ impl Atari {
       let y_reg : u16 = self.yReg as u16;
       return (target_loc + y_reg) as usize;
    }
+   fn abs_addr_x (&mut self, pc : usize) -> usize {
+      let p1 : u16 = self.read_mem(pc+1) as u16;
+      let p2 : u16 = self.read_mem(pc+2) as u16;
+      let target_loc : u16 = p1 << 8 | p2;
+      let x_reg : u16 = self.xReg as u16;
+      return (target_loc + x_reg) as usize;
+   }
 
    /* #region Flag (Processor Status) Instructions */
    fn sei(&mut self, pc : usize) -> usize {
@@ -187,6 +196,7 @@ impl Atari {
    }
    /* #endregion */
 
+   /* #region LDX */
    fn ldx(&mut self, mode: Mode, pc : usize) -> usize {
       println!("LDX {}", mode.to_string());
       let mut pc = pc;
@@ -197,7 +207,7 @@ impl Atari {
          Mode::ZPY => (self.read_mem(pc+1) + self.yReg) as usize,
          Mode::ABS => self.abs_addr(pc) as usize,
          Mode::ABSY => self.abs_addr_y(pc) as usize,
-         _ => 0
+         _ => panic!(INV_ADD_PANIC)
       };
 
       self.xReg = self.read_mem(target_loc);
@@ -205,12 +215,40 @@ impl Atari {
       pc += match mode {
          Mode::IMM | Mode::ZP | Mode::ZPY => 2,
          Mode::ABS | Mode::ABSY => 3,
-         _ => 0
+         _ => panic!(INV_ADD_PANIC)
       };
 
       self.set_flags(self.xReg);
       return pc;
    }
+   /* #endregion */
+
+   /* #region LDY */
+    fn ldy(&mut self, mode: Mode, pc : usize) -> usize {
+      println!("LDY {}", mode.to_string());
+      let mut pc = pc;
+
+      let target_loc = match mode {
+         Mode::IMM => pc+1 as usize,
+         Mode::ZP => self.read_mem(pc+1) as usize,
+         Mode::ZPX => (self.read_mem(pc+1) + self.xReg) as usize,
+         Mode::ABS => self.abs_addr(pc) as usize,
+         Mode::ABSX => self.abs_addr_x(pc) as usize,
+         _ => panic!(INV_ADD_PANIC)
+      };
+
+      self.yReg = self.read_mem(target_loc);
+
+      pc += match mode {
+         Mode::IMM | Mode::ZP | Mode::ZPX => 2,
+         Mode::ABS | Mode::ABSX => 3,
+         _ => panic!(INV_ADD_PANIC)
+      };
+
+      self.set_flags(self.xReg);
+      return pc;
+   }
+   /* #endregion */
 }
 
 
@@ -302,5 +340,73 @@ mod tests {
         assert_eq!(atari.xReg, expected);
     }
 
+    #[test]
+    #[should_panic(expected = "INVALID ADDRESSING MODE!!!")]
+    fn test_ldx_invalid_mode() {
+        let mut atari = setup_atari();
+        atari.ldx(Mode::ABSX, 0);
+    }
+
+    #[test]
+    fn test_ldy_imm() {
+        let mut atari = setup_atari();
+        let expected = 0x10;
+        atari.memory[1] = expected;
+        atari.ldy(Mode::IMM, 0);
+        assert_eq!(atari.yReg, expected);
+    }
+    
+
+    #[test]
+    fn test_ldy_zp() {
+        let mut atari = setup_atari();
+        let expected = 0x12;
+        atari.memory[0x10] = expected;
+        atari.memory[1]    = 0x10;
+        atari.ldy(Mode::ZP, 0);
+        assert_eq!(atari.yReg, expected);
+    }
+
+    #[test]
+    fn test_ldy_zpx() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
+        atari.memory[0x10+5] = expected;
+        atari.memory[0x10] = 0x12;
+        atari.memory[1]    = 0x10;
+        atari.xReg         = 5;
+        atari.ldy(Mode::ZPX, 0);
+        assert_eq!(atari.yReg, expected);
+    }
+
+    #[test]
+    fn test_ldy_abs() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
+        atari.memory[0x1012] = expected;
+        atari.memory[1]    = 0x10;
+        atari.memory[2]    = 0x12;
+        atari.ldy(Mode::ABS, 0);
+        assert_eq!(atari.yReg, expected);
+    }
+
+    #[test]
+    fn test_ldy_absy() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
+        atari.memory[0x1012+5] = expected;
+        atari.memory[1]    = 0x10;
+        atari.memory[2]    = 0x12;
+        atari.xReg = 5;
+        atari.ldy(Mode::ABSX, 0);
+        assert_eq!(atari.yReg, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "INVALID ADDRESSING MODE!!!")]
+    fn test_ldy_invalid_mode() {
+        let mut atari = setup_atari();
+        atari.ldy(Mode::ABSY, 0);
+    }
 
 }
