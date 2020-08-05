@@ -124,6 +124,20 @@ impl Atari {
       }
    }
 
+   fn abs_addr (&mut self, pc : usize) -> usize {
+      let p1 : u16 = self.read_mem(pc+1) as u16;
+      let p2 : u16 = self.read_mem(pc+2) as u16;
+      let target_loc : u16 = p1 << 8 | p2;
+      return target_loc as usize;
+   }
+   fn abs_addr_y (&mut self, pc : usize) -> usize {
+      let p1 : u16 = self.read_mem(pc+1) as u16;
+      let p2 : u16 = self.read_mem(pc+2) as u16;
+      let target_loc : u16 = p1 << 8 | p2;
+      let y_reg : u16 = self.yReg as u16;
+      return (target_loc + y_reg) as usize;
+   }
+
    /* #region Flag (Processor Status) Instructions */
    fn sei(&mut self, pc : usize) -> usize {
       println!("SEI");
@@ -176,40 +190,24 @@ impl Atari {
    fn ldx(&mut self, mode: Mode, pc : usize) -> usize {
       println!("LDX {}", mode.to_string());
       let mut pc = pc;
-      match mode {
-         Mode::IMM => {
-            self.xReg = self.read_mem(pc+1);
-            pc+=2;
-         },
-         Mode::ZP => {
-            let target_loc = self.read_mem(pc+1) as usize;
-            self.xReg = self.read_mem(target_loc);
-            pc+=2;
-         },
-         Mode::ZPY => {
-            let target_loc = (self.read_mem(pc+1) + self.yReg) as usize;
-            self.xReg = self.read_mem(target_loc);
-            pc+=2;
-         },
-         Mode::ABS => {
-            let p1 : u16 = self.read_mem(pc+1) as u16;
-            let p2 : u16 = self.read_mem(pc+2) as u16;
-            let target_loc : u16 = p1 << 8 | p2;
-            let target_loc_ind : usize = target_loc as usize;
-            self.xReg = self.read_mem(target_loc_ind);
-            pc+=3;
-         },
-         Mode::ABSY => {
-            let p1 : u16 = self.read_mem(pc+1) as u16;
-            let p2 : u16 = self.read_mem(pc+2) as u16;
-            let target_loc : u16 = p1 << 8 | p2;
-            let y_reg : u16 = self.yReg as u16;
-            let target_loc_ind : usize = (target_loc + y_reg) as usize;
-            self.xReg = self.read_mem(target_loc_ind);
-            pc+=3;
-         }
-         _ => println!("MODE NOT IMPLEMENTED")
-      }
+
+      let target_loc = match mode {
+         Mode::IMM => pc+1 as usize,
+         Mode::ZP => self.read_mem(pc+1) as usize,
+         Mode::ZPY => (self.read_mem(pc+1) + self.yReg) as usize,
+         Mode::ABS => self.abs_addr(pc) as usize,
+         Mode::ABSY => self.abs_addr_y(pc) as usize,
+         _ => 0
+      };
+
+      self.xReg = self.read_mem(target_loc);
+
+      pc += match mode {
+         Mode::IMM | Mode::ZP | Mode::ZPY => 2,
+         Mode::ABS | Mode::ABSY => 3,
+         _ => 0
+      };
+
       self.set_flags(self.xReg);
       return pc;
    }
@@ -235,6 +233,74 @@ fn main() {
                                     aReg: 0};   
    
    atari.boot();      
+}
 
-   
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_atari() -> Atari {
+        return Atari {memory: [0; 0x1FFF],
+            flags: 0,
+            pc:0x1000,
+            xReg: 0,
+            yReg: 0,
+            aReg: 0};
+        }
+    
+    #[test]
+    fn test_ldx_imm() {
+        let mut atari = setup_atari();
+        let expected = 0x10;
+        atari.memory[1] = expected;
+        atari.ldx(Mode::IMM, 0);
+        assert_eq!(atari.xReg, expected);
+    }
+
+    #[test]
+    fn test_ldx_zp() {
+        let mut atari = setup_atari();
+        let expected = 0x12;
+        atari.memory[0x10] = expected;
+        atari.memory[1]    = 0x10;
+        atari.ldx(Mode::ZP, 0);
+        assert_eq!(atari.xReg, expected);
+    }
+
+    #[test]
+    fn test_ldx_zpy() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
+        atari.memory[0x10+5] = expected;
+        atari.memory[0x10] = 0x12;
+        atari.memory[1]    = 0x10;
+        atari.yReg         = 5;
+        atari.ldx(Mode::ZPY, 0);
+        assert_eq!(atari.xReg, expected);
+    }
+
+    #[test]
+    fn test_ldx_abs() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
+        atari.memory[0x1012] = expected;
+        atari.memory[1]    = 0x10;
+        atari.memory[2]    = 0x12;
+        atari.ldx(Mode::ABS, 0);
+        assert_eq!(atari.xReg, expected);
+    }
+
+    #[test]
+    fn test_ldx_absy() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
+        atari.memory[0x1012+5] = expected;
+        atari.memory[1]    = 0x10;
+        atari.memory[2]    = 0x12;
+        atari.yReg = 5;
+        atari.ldx(Mode::ABSY, 0);
+        assert_eq!(atari.xReg, expected);
+    }
+
+
 }
