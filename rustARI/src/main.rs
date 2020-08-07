@@ -9,6 +9,7 @@ extern crate find_folder;
 use std::env;
 use std::string::ToString;
 use piston_window::*;
+use std::io;
 
 use std::str;
 
@@ -60,7 +61,8 @@ struct Atari {
    pc: usize,
    xReg: u8,
    yReg: u8,
-   aReg: u8
+   aReg: u8,
+   sPnt: u8
 }
 
 impl Atari {
@@ -110,12 +112,26 @@ impl Atari {
          0xBE => self.ldx(Mode::ABSY, pc),
 
          //LDY (Load Y register)
-         0xA0 => self.ldx(Mode::IMM, pc),
-         0xA4 => self.ldx(Mode::ZP, pc),
-         0xB4 => self.ldx(Mode::ZPX, pc),
-         0xAC => self.ldx(Mode::ABS, pc),
-         0xBC => self.ldx(Mode::ABSX, pc),
-         
+         0xA0 => self.ldy(Mode::IMM, pc),
+         0xA4 => self.ldy(Mode::ZP, pc),
+         0xB4 => self.ldy(Mode::ZPX, pc),
+         0xAC => self.ldy(Mode::ABS, pc),
+         0xBC => self.ldy(Mode::ABSX, pc),
+
+         //Stack Instructions
+         0x9A => self.txs(pc),
+         0xBA => self.tsx(pc),
+
+         //Register Instructions - NEEDS TESTING
+         0xAA => self.tax(pc),
+         0x8A => self.txa(pc),
+         0xCA => self.dex(pc),
+         0xE8 => self.inx(pc),
+         0xA8 => self.tay(pc),
+         0x98 => self.tya(pc),
+         0x88 => self.dey(pc),
+         0xC8 => self.iny(pc),
+
          _ => panic!("INSTRUCTION NOT IMPLEMENTED: {:X?}", self.read_mem(pc)),
       };
 
@@ -236,6 +252,7 @@ impl Atari {
    /* #endregion */
 
    /* #region LDY */
+   
     fn ldy(&mut self, mode: Mode, pc : usize) -> usize {
       println!("LDY {}", mode.to_string());
       let mut pc = pc;
@@ -261,7 +278,72 @@ impl Atari {
       return pc;
    }
    /* #endregion */
+
+   /* #region Stack Instructions */
+   fn txs(&mut self, pc : usize) -> usize {
+      println!("TXS");
+      self.sPnt = self.xReg;
+      return pc + 1;
+   }
+   fn tsx(&mut self, pc : usize) -> usize {
+      println!("TSX");
+      self.xReg = self.sPnt;
+      return pc + 1;
+   }
+   /* #endregion */
+
+    /* #region Register Instructions */
+    fn tax(&mut self, pc : usize) -> usize {
+      println!("TAX");
+      self.xReg = self.aReg;
+      self.set_flags(self.xReg);
+      return pc + 1;
+   }
+   fn txa(&mut self, pc : usize) -> usize {
+      println!("TXA");
+      self.aReg = self.xReg;
+      self.set_flags(self.aReg);
+      return pc + 1;
+   }
+   fn dex(&mut self, pc : usize) -> usize {
+      println!("DEX");
+      self.xReg -= 1;
+      self.set_flags(self.xReg);
+      return pc + 1;
+   }
+   fn inx(&mut self, pc : usize) -> usize {
+      println!("INX");
+      self.xReg += 1;
+      self.set_flags(self.xReg);
+      return pc + 1;
+   }
+   fn tay(&mut self, pc : usize) -> usize {
+      println!("TAY");
+      self.yReg = self.aReg;
+      self.set_flags(self.yReg);
+      return pc + 1;
+   }
+   fn tya(&mut self, pc : usize) -> usize {
+      println!("TYA");
+      self.aReg = self.yReg;
+      self.set_flags(self.aReg);
+      return pc + 1;
+   }
+   fn dey(&mut self, pc : usize) -> usize {
+      println!("DEY");
+      self.yReg -= 1;
+      self.set_flags(self.yReg);
+      return pc + 1;
+   }
+   fn iny(&mut self, pc : usize) -> usize {
+      println!("INY");
+      self.yReg += 1;
+      self.set_flags(self.yReg);
+      return pc + 1;
+   }
+   /* #endregion */
 }
+
 
 
 
@@ -280,54 +362,69 @@ fn main() {
                                     pc:0x1000,
                                     xReg: 0,
                                     yReg: 0,
-                                    aReg: 0};   
+                                    aReg: 0,
+                                    sPnt: 0};   
    main_loop(atari);
 }
 
 fn main_loop(mut atari : Atari) {
 
-   let mut window: PistonWindow = WindowSettings::new(
-      "rustARI",
-      [200, 200]
-  )
-  .exit_on_esc(true)
-  //.opengl(OpenGL::V2_1) // Set a different OpenGl version
-  .build()
-  .unwrap();
+  
+
+   /* #region piston commented code */
+//    let mut window: PistonWindow = WindowSettings::new(
+//       "rustARI",
+//       [200, 200]
+//   )
+//   .exit_on_esc(true)
+//   //.opengl(OpenGL::V2_1) // Set a different OpenGl version
+//   .build()
+//   .unwrap();
    
-   let assets = find_folder::Search::ParentsThenKids(3, 3)
-      .for_folder("assets").unwrap();
-   println!("{:?}", assets);
-   let mut glyphs = window.load_font(assets.join("consola.ttf")).unwrap();
+//    let assets = find_folder::Search::ParentsThenKids(3, 3)
+//       .for_folder("assets").unwrap();
+//    println!("{:?}", assets);
+//    let mut glyphs = window.load_font(assets.join("consola.ttf")).unwrap();
 
-   while let Some(event) = window.next() {
+   // while let Some(event) = window.next() {
       
-      window.draw_2d(&event, |c, g, device| {
-         clear([0.0, 0.0, 0.0, 1.0], g);
-         let transform = c.transform.trans(14.0, 14.0);
-         text::Text::new_color([0.0, 1.0, 0.0, 1.0], 14).draw(
-             "NOUBDIZC",
-             &mut glyphs,
-             &c.draw_state,
-             transform, g
-         ).unwrap();
+   //    window.draw_2d(&event, |c, g, device| {
+   //       clear([0.0, 0.0, 0.0, 1.0], g);
+   //       let transform = c.transform.trans(14.0, 14.0);
+   //       text::Text::new_color([0.0, 1.0, 0.0, 1.0], 14).draw(
+   //           "NOUBDIZC",
+   //           &mut glyphs,
+   //           &c.draw_state,
+   //           transform, g
+   //       ).unwrap();
 
-         let transform = c.transform.trans(14.0, 30.0);
-         let flags_byte = atari.flags;
-         let flags_text = &format!("{:08b}", flags_byte);
-         text::Text::new_color([0.0, 1.0, 0.0, 1.0], 14).draw(
-               &flags_text,
-               &mut glyphs,
-               &c.draw_state,
-               transform, g
-         ).unwrap();
+   //       let transform = c.transform.trans(14.0, 30.0);
+   //       let flags_byte = atari.flags;
+   //       let flags_text = &format!("{:08b}", flags_byte);
+   //       text::Text::new_color([0.0, 1.0, 0.0, 1.0], 14).draw(
+   //             &flags_text,
+   //             &mut glyphs,
+   //             &c.draw_state,
+   //             transform, g
+   //       ).unwrap();
 
-         // Update glyphs before rendering.
-         glyphs.factory.encoder.flush(device);
-        });
+   //       // Update glyphs before rendering.
+   //       glyphs.factory.encoder.flush(device);
+   //      });
+    /* #endregion */
+      
+    loop {
+         atari.execute_step();
 
-      //atari.execute_step();
-}
+         let mut input = String::new();
+
+         io::stdin().read_line(&mut input)
+            .ok()
+            .expect("Couldn't read line");
+
+         
+      }
+
 }
 
 #[cfg(test)]
@@ -340,7 +437,8 @@ mod tests {
             pc:0x1000,
             xReg: 0,
             yReg: 0,
-            aReg: 0};
+            aReg: 0,
+            sPnt: 0};
         }
     
     #[test]
@@ -465,5 +563,66 @@ mod tests {
         let mut atari = setup_atari();
         atari.ldy(Mode::ABSY, 0);
     }
+
+   #[test]
+   fn test_sec() {
+      let mut atari = setup_atari();
+      atari.sec(0);
+      assert_eq!(atari.read_flag(Flag::CARRY), true);
+   }
+
+   #[test]
+   fn test_cli() {
+      let mut atari = setup_atari();
+      atari.write_flag(FlagWriter::IRQD, true);
+      atari.cli(0);
+      assert_eq!(atari.read_flag(Flag::IRQD), false);
+   }
+
+   #[test]
+   fn test_sei() {
+      let mut atari = setup_atari();
+      atari.sei(0);
+      assert_eq!(atari.read_flag(Flag::IRQD), true);
+   }
+
+   #[test]
+   fn test_clv() {
+      let mut atari = setup_atari();
+      atari.write_flag(FlagWriter::OVER, true);
+      atari.clv(0);
+      assert_eq!(atari.read_flag(Flag::OVER), false);
+   }
+
+   #[test]
+   fn test_cld() {
+      let mut atari = setup_atari();
+      atari.write_flag(FlagWriter::DEC, true);
+      atari.cld(0);
+      assert_eq!(atari.read_flag(Flag::DEC), false);
+   }
+
+   #[test]
+   fn test_sed() {
+      let mut atari = setup_atari();
+      atari.sed(0);
+      assert_eq!(atari.read_flag(Flag::DEC), true);
+   }
+
+   #[test]
+   fn test_txs() {
+      let mut atari = setup_atari();
+      atari.xReg = 0x12;
+      atari.txs(0);
+      assert_eq!(atari.sPnt, 0x12);
+   }
+
+   #[test]
+   fn test_tsx() {
+      let mut atari = setup_atari();
+      atari.sPnt = 0x12;
+      atari.tsx(0);
+      assert_eq!(atari.xReg, 0x12);
+   }
 
 }
