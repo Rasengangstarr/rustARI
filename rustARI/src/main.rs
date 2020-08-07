@@ -93,7 +93,7 @@ impl Atari {
    fn execute_step(&mut self) {
       
       let pc = self.pc;
-
+      println!("{:X?}", pc);
       self.pc = match self.read_mem(pc) {
          //Flag (Processor Status) Instructions
          0x18 => self.clc(pc),
@@ -118,6 +118,21 @@ impl Atari {
          0xAC => self.ldy(Mode::ABS, pc),
          0xBC => self.ldy(Mode::ABSX, pc),
 
+         //LDA (Load A register) - NEEDS TESTING
+         0xA9 => self.lda(Mode::IMM, pc),
+         0xA5 => self.lda(Mode::ZP, pc),
+         0xB5 => self.lda(Mode::ZPX, pc),
+         0xAD => self.lda(Mode::ABS, pc),
+         0xBD => self.lda(Mode::ABSX, pc),
+         0xB9 => self.lda(Mode::ABSY, pc),
+         
+         //STA (Store A register) - NEEDS TESTING
+         0x85 => self.sta(Mode::ZP, pc),
+         0x95 => self.sta(Mode::ZPX, pc),
+         0x8D => self.sta(Mode::ABS, pc),
+         0x9D => self.sta(Mode::ABSX, pc),
+         0x99 => self.sta(Mode::ABSY, pc),
+
          //Stack Instructions
          0x9A => self.txs(pc),
          0xBA => self.tsx(pc),
@@ -131,6 +146,9 @@ impl Atari {
          0x98 => self.tya(pc),
          0x88 => self.dey(pc),
          0xC8 => self.iny(pc),
+
+         //Branching instructions
+         0xD0 => self.bne(pc),
 
          _ => panic!("INSTRUCTION NOT IMPLEMENTED: {:X?}", self.read_mem(pc)),
       };
@@ -158,12 +176,15 @@ impl Atari {
       let p1 : u16 = self.read_mem(pc+1) as u16;
       let p2 : u16 = self.read_mem(pc+2) as u16;
       let target_loc : u16 = p1 << 8 | p2;
-      return target_loc as usize;
+      println!("{:X?}",target_loc);
+      println!("{:X?}",p1);
+      println!("{:X?}",p2);
+      return self.translate_addr(target_loc) as usize;
    }
    fn abs_addr_y (&mut self, pc : usize) -> usize {
       let p1 : u16 = self.read_mem(pc+1) as u16;
       let p2 : u16 = self.read_mem(pc+2) as u16;
-      let target_loc : u16 = p1 << 8 | p2;
+      let target_loc : u16 = self.translate_addr(p1 << 8 | p2);
       let y_reg : u16 = self.yReg as u16;
       return (target_loc + y_reg) as usize;
    }
@@ -173,6 +194,11 @@ impl Atari {
       let target_loc : u16 = p1 << 8 | p2;
       let x_reg : u16 = self.xReg as u16;
       return (target_loc + x_reg) as usize;
+   }
+   fn translate_addr(&mut self, mut addr : u16) -> u16
+   {
+      addr &= 0b0001_1111_1111_1111;
+      return addr;
    }
 
    /* #region Flag (Processor Status) Instructions */
@@ -279,6 +305,62 @@ impl Atari {
    }
    /* #endregion */
 
+   /* #region LDA */
+   
+   fn lda(&mut self, mode: Mode, pc : usize) -> usize {
+      println!("LDA {}", mode.to_string());
+      let mut pc = pc;
+
+      let target_loc = match mode {
+         Mode::IMM => pc+1 as usize,
+         Mode::ZP => self.read_mem(pc+1) as usize,
+         Mode::ZPX => (self.read_mem(pc+1) + self.xReg) as usize,
+         Mode::ABS => self.abs_addr(pc) as usize,
+         Mode::ABSX => self.abs_addr_x(pc) as usize,
+         Mode::ABSY => self.abs_addr_y(pc) as usize,
+         _ => panic!(INV_ADD_PANIC)
+      };
+
+      self.aReg = self.read_mem(target_loc);
+
+      pc += match mode {
+         Mode::IMM | Mode::ZP | Mode::ZPX => 2,
+         Mode::ABS | Mode::ABSX | Mode::ABSY => 3,
+         _ => panic!(INV_ADD_PANIC)
+      };
+
+      self.set_flags(self.aReg);
+      return pc;
+   }
+   /* #endregion */
+
+   /* #region STA */
+
+   fn sta(&mut self, mode: Mode, pc : usize) -> usize {
+      println!("STA {}", mode.to_string());
+      let mut pc = pc;
+
+      let target_loc = match mode {
+         Mode::ZP => self.read_mem(pc+1) as usize,
+         Mode::ZPX => (self.read_mem(pc+1) + self.xReg) as usize,
+         Mode::ABS => self.abs_addr(pc) as usize,
+         Mode::ABSX => self.abs_addr_x(pc) as usize,
+         Mode::ABSY => self.abs_addr_y(pc) as usize,
+         _ => panic!(INV_ADD_PANIC)
+      };
+
+      self.write_mem(target_loc, self.aReg);
+
+      pc += match mode {
+         Mode::ZP | Mode::ZPX => 2,
+         Mode::ABS | Mode::ABSX | Mode::ABSY => 3,
+         _ => panic!(INV_ADD_PANIC)
+      };
+
+      return pc;
+   }
+   /* #endregion */
+
    /* #region Stack Instructions */
    fn txs(&mut self, pc : usize) -> usize {
       println!("TXS");
@@ -340,6 +422,24 @@ impl Atari {
       self.yReg += 1;
       self.set_flags(self.yReg);
       return pc + 1;
+   }
+   /* #endregion */
+
+   /* #region Branching Instructions */
+   fn bne(&mut self, pc : usize) -> usize {
+      println!("BNE");
+      if self.read_flag(Flag::ZERO) {
+         return pc+2;
+      } else {
+         let step = self.read_mem(pc+1) as i8;
+         let step = step as i32;
+         let pci = pc as i32;
+         println!("{:X?}",pci);
+         println!("{}",step);
+         
+         return (pci+step+2) as usize;
+      }
+      
    }
    /* #endregion */
 }
