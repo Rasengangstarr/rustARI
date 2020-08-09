@@ -5,11 +5,14 @@ extern crate strum_macros;
 extern crate piston_window;
 
 extern crate find_folder;
+extern crate image;
 
 use std::env;
 use std::string::ToString;
 use piston_window::*;
 use std::io;
+
+use image::{GenericImage, ImageBuffer, Pixel};
 
 use std::str;
 
@@ -42,7 +45,7 @@ enum Flag {
 
 #[derive(Display, Debug)]
 enum Mode {
-   
+
    IMM,
    ZP,
    ZPX,
@@ -51,7 +54,8 @@ enum Mode {
    ABSX,
    ABSY,
    INDX,
-   INDY
+   INDY,
+   IND
 }
 
 
@@ -79,7 +83,7 @@ impl Atari {
       let flagu8 = flag as u8;
       return self.flags & (1 << flagu8) != 0;
    }
-   
+
    fn write_flag(&mut self, flag_writer : FlagWriter, val : bool) {
       let fw = flag_writer as u8;
       if val {
@@ -91,9 +95,10 @@ impl Atari {
    /* #endregion */
 
    fn execute_step(&mut self) {
-      
+
       let pc = self.pc;
       println!("{:X?}", pc);
+      println!("{:X?}", self.xReg);
       self.pc = match self.read_mem(pc) {
          //Flag (Processor Status) Instructions
          0x18 => self.clc(pc),
@@ -125,7 +130,7 @@ impl Atari {
          0xAD => self.lda(Mode::ABS, pc),
          0xBD => self.lda(Mode::ABSX, pc),
          0xB9 => self.lda(Mode::ABSY, pc),
-         
+
          //STA (Store A register) - NEEDS TESTING
          0x85 => self.sta(Mode::ZP, pc),
          0x95 => self.sta(Mode::ZPX, pc),
@@ -150,6 +155,9 @@ impl Atari {
          //Branching instructions
          0xD0 => self.bne(pc),
 
+         //Jump instructions
+         0x4C => self.jmp(Mode::ABS, pc),
+         0x6C => self.jmp(Mode::IND, pc),
          _ => panic!("INSTRUCTION NOT IMPLEMENTED: {:X?}", self.read_mem(pc)),
       };
 
@@ -173,24 +181,21 @@ impl Atari {
    }
 
    fn abs_addr (&mut self, pc : usize) -> usize {
-      let p1 : u16 = self.read_mem(pc+1) as u16;
-      let p2 : u16 = self.read_mem(pc+2) as u16;
+      let p2 : u16 = self.read_mem(pc+1) as u16;
+      let p1 : u16 = self.read_mem(pc+2) as u16;
       let target_loc : u16 = p1 << 8 | p2;
-      println!("{:X?}",target_loc);
-      println!("{:X?}",p1);
-      println!("{:X?}",p2);
       return self.translate_addr(target_loc) as usize;
    }
    fn abs_addr_y (&mut self, pc : usize) -> usize {
-      let p1 : u16 = self.read_mem(pc+1) as u16;
-      let p2 : u16 = self.read_mem(pc+2) as u16;
+      let p2 : u16 = self.read_mem(pc+1) as u16;
+      let p1 : u16 = self.read_mem(pc+2) as u16;
       let target_loc : u16 = self.translate_addr(p1 << 8 | p2);
       let y_reg : u16 = self.yReg as u16;
       return (target_loc + y_reg) as usize;
    }
    fn abs_addr_x (&mut self, pc : usize) -> usize {
-      let p1 : u16 = self.read_mem(pc+1) as u16;
-      let p2 : u16 = self.read_mem(pc+2) as u16;
+      let p2 : u16 = self.read_mem(pc+1) as u16;
+      let p1 : u16 = self.read_mem(pc+2) as u16;
       let target_loc : u16 = p1 << 8 | p2;
       let x_reg : u16 = self.xReg as u16;
       return (target_loc + x_reg) as usize;
@@ -207,35 +212,35 @@ impl Atari {
       self.write_flag(FlagWriter::IRQD, true);
       return pc+1;
    }
-   
+
    fn cli(&mut self, pc : usize) -> usize {
       println!("CLI");
       self.pc += 1;
       self.write_flag(FlagWriter::IRQD, false);
       return pc+1;
    }
-   
+
    fn cld(&mut self, pc : usize) -> usize {
       println!("CLD");
       self.pc += 1;
       self.write_flag(FlagWriter::DEC, false);
       return pc+1;
    }
-   
+
    fn clc(&mut self, pc : usize) -> usize {
       println!("CLC");
       self.pc += 1;
       self.write_flag(FlagWriter::CARRY, false);
       return pc+1;
    }
-   
+
    fn clv(&mut self, pc : usize) -> usize {
       println!("CLV");
       self.pc += 1;
       self.write_flag(FlagWriter::OVER, false);
       return pc+1;
    }
-   
+
    fn sed(&mut self, pc : usize) -> usize {
       println!("SED");
       self.pc += 1;
@@ -278,7 +283,7 @@ impl Atari {
    /* #endregion */
 
    /* #region LDY */
-   
+
     fn ldy(&mut self, mode: Mode, pc : usize) -> usize {
       println!("LDY {}", mode.to_string());
       let mut pc = pc;
@@ -306,7 +311,7 @@ impl Atari {
    /* #endregion */
 
    /* #region LDA */
-   
+
    fn lda(&mut self, mode: Mode, pc : usize) -> usize {
       println!("LDA {}", mode.to_string());
       let mut pc = pc;
@@ -434,13 +439,23 @@ impl Atari {
          let step = self.read_mem(pc+1) as i8;
          let step = step as i32;
          let pci = pc as i32;
-         println!("{:X?}",pci);
-         println!("{}",step);
-         
          return (pci+step+2) as usize;
       }
-      
+
    }
+   /* #endregion */
+
+   /* #region Jumping Instructions */
+   fn jmp(&mut self, mode: Mode, pc : usize) -> usize {
+      println!("BNE");
+
+      let target_loc = match mode {
+         Mode::ABS => self.abs_addr(pc) as usize,
+         _ => panic!(INV_ADD_PANIC)
+      };
+      return (target_loc) as usize;
+   }
+
    /* #endregion */
 }
 
@@ -453,7 +468,7 @@ fn main() {
 
    assert_eq!(args.len(), 2, "wrong number of arguments provided! provide a filename only");
    let filename = &args[1];
-   
+
    println!("reading file: {}", filename);
 
    let rom = rom_read::get_file_as_byte_vec(filename);
@@ -463,67 +478,60 @@ fn main() {
                                     xReg: 0,
                                     yReg: 0,
                                     aReg: 0,
-                                    sPnt: 0};   
+                                    sPnt: 0};
    main_loop(atari);
 }
 
 fn main_loop(mut atari : Atari) {
 
-  
+  let mut beamX = 0;
+  let mut beamY = 0;
 
+  let width = 228;
+  let height = 262;
+
+  let mut frame_buffer = ImageBuffer::from_pixel(width, height, image::Rgba([0,0,255,255]));
+   frame_buffer.put_pixel(0, 0, image::Rgba([0,255,0,255]));
    /* #region piston commented code */
-//    let mut window: PistonWindow = WindowSettings::new(
-//       "rustARI",
-//       [200, 200]
-//   )
-//   .exit_on_esc(true)
-//   //.opengl(OpenGL::V2_1) // Set a different OpenGl version
-//   .build()
-//   .unwrap();
+   let mut window: piston_window::PistonWindow =
+   piston_window::WindowSettings::new("Rustari", [width, height])
+       .exit_on_esc(true)
+       .build()
+       .unwrap_or_else(|e| { panic!("Could not create window!")});
+
+
+   let assets = find_folder::Search::ParentsThenKids(3, 3)
+      .for_folder("assets").unwrap();
+   println!("{:?}", assets);
    
-//    let assets = find_folder::Search::ParentsThenKids(3, 3)
-//       .for_folder("assets").unwrap();
-//    println!("{:?}", assets);
-//    let mut glyphs = window.load_font(assets.join("consola.ttf")).unwrap();
-
-   // while let Some(event) = window.next() {
+   let tex = piston_window::Texture::from_image(
+      &mut window.create_texture_context(),
+      &frame_buffer,
+      &piston_window::TextureSettings::new())
+      .unwrap();
       
-   //    window.draw_2d(&event, |c, g, device| {
-   //       clear([0.0, 0.0, 0.0, 1.0], g);
-   //       let transform = c.transform.trans(14.0, 14.0);
-   //       text::Text::new_color([0.0, 1.0, 0.0, 1.0], 14).draw(
-   //           "NOUBDIZC",
-   //           &mut glyphs,
-   //           &c.draw_state,
-   //           transform, g
-   //       ).unwrap();
+   window.set_lazy(true);
 
-   //       let transform = c.transform.trans(14.0, 30.0);
-   //       let flags_byte = atari.flags;
-   //       let flags_text = &format!("{:08b}", flags_byte);
-   //       text::Text::new_color([0.0, 1.0, 0.0, 1.0], 14).draw(
-   //             &flags_text,
-   //             &mut glyphs,
-   //             &c.draw_state,
-   //             transform, g
-   //       ).unwrap();
-
-   //       // Update glyphs before rendering.
-   //       glyphs.factory.encoder.flush(device);
-   //      });
+   while let Some(e) = window.next() {
+      window.draw_2d(&e, |c, g, _| {
+            piston_window::image(&tex, c.transform, g)
+      });
+   }
+  
+   
     /* #endregion */
-      
-    loop {
-         atari.execute_step();
 
-         let mut input = String::new();
+   //  loop {
 
-         io::stdin().read_line(&mut input)
-            .ok()
-            .expect("Couldn't read line");
 
-         
-      }
+   //       // let mut input = String::new();
+
+   //       // io::stdin().read_line(&mut input)
+   //       //    .ok()
+   //       //    .expect("Couldn't read line");
+
+
+   //    }
 
 }
 
@@ -540,7 +548,7 @@ mod tests {
             aReg: 0,
             sPnt: 0};
         }
-    
+
     #[test]
     fn test_ldx_imm() {
         let mut atari = setup_atari();
@@ -610,7 +618,7 @@ mod tests {
         atari.ldy(Mode::IMM, 0);
         assert_eq!(atari.yReg, expected);
     }
-    
+
 
     #[test]
     fn test_ldy_zp() {
