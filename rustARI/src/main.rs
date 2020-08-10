@@ -2,17 +2,8 @@ extern crate strum;
 #[macro_use]
 extern crate strum_macros;
 
-extern crate piston_window;
-
-extern crate find_folder;
-extern crate image;
-
 use std::env;
 use std::string::ToString;
-use piston_window::*;
-use std::io;
-
-use image::{GenericImage, ImageBuffer, Pixel};
 
 use std::str;
 
@@ -394,6 +385,7 @@ impl Atari {
    }
    fn dex(&mut self, pc : usize) -> usize {
       println!("DEX");
+      println!("{}",self.xReg);
       self.xReg -= 1;
       self.set_flags(self.xReg);
       return pc + 1;
@@ -489,49 +481,6 @@ fn main_loop(mut atari : Atari) {
 
   let width = 228;
   let height = 262;
-
-  let mut frame_buffer = ImageBuffer::from_pixel(width, height, image::Rgba([0,0,255,255]));
-   frame_buffer.put_pixel(0, 0, image::Rgba([0,255,0,255]));
-   /* #region piston commented code */
-   let mut window: piston_window::PistonWindow =
-   piston_window::WindowSettings::new("Rustari", [width, height])
-       .exit_on_esc(true)
-       .build()
-       .unwrap_or_else(|e| { panic!("Could not create window!")});
-
-
-   let assets = find_folder::Search::ParentsThenKids(3, 3)
-      .for_folder("assets").unwrap();
-   println!("{:?}", assets);
-   
-   let tex = piston_window::Texture::from_image(
-      &mut window.create_texture_context(),
-      &frame_buffer,
-      &piston_window::TextureSettings::new())
-      .unwrap();
-      
-   window.set_lazy(true);
-
-   while let Some(e) = window.next() {
-      window.draw_2d(&e, |c, g, _| {
-            piston_window::image(&tex, c.transform, g)
-      });
-   }
-  
-   
-    /* #endregion */
-
-   //  loop {
-
-
-   //       // let mut input = String::new();
-
-   //       // io::stdin().read_line(&mut input)
-   //       //    .ok()
-   //       //    .expect("Couldn't read line");
-
-
-   //    }
 
 }
 
