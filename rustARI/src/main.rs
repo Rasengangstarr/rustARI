@@ -7,6 +7,15 @@ use std::string::ToString;
 
 use std::str;
 
+use log::error;
+use pixels::{wgpu::Surface, Error, Pixels, SurfaceTexture};
+use winit::dpi::LogicalSize;
+use winit::event::{Event, VirtualKeyCode};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::WindowBuilder;
+use winit_input_helper::WinitInputHelper;
+
+
 mod rom_read;
 mod mem_load;
 
@@ -88,8 +97,6 @@ impl Atari {
    fn execute_step(&mut self) {
 
       let pc = self.pc;
-      println!("{:X?}", pc);
-      println!("{:X?}", self.xReg);
       self.pc = match self.read_mem(pc) {
          //Flag (Processor Status) Instructions
          0x18 => self.clc(pc),
@@ -199,48 +206,48 @@ impl Atari {
 
    /* #region Flag (Processor Status) Instructions */
    fn sei(&mut self, pc : usize) -> usize {
-      println!("SEI");
+      //println!("SEI");
       self.write_flag(FlagWriter::IRQD, true);
       return pc+1;
    }
 
    fn cli(&mut self, pc : usize) -> usize {
-      println!("CLI");
+      //println!("CLI");
       self.pc += 1;
       self.write_flag(FlagWriter::IRQD, false);
       return pc+1;
    }
 
    fn cld(&mut self, pc : usize) -> usize {
-      println!("CLD");
+      //println!("CLD");
       self.pc += 1;
       self.write_flag(FlagWriter::DEC, false);
       return pc+1;
    }
 
    fn clc(&mut self, pc : usize) -> usize {
-      println!("CLC");
+      //println!("CLC");
       self.pc += 1;
       self.write_flag(FlagWriter::CARRY, false);
       return pc+1;
    }
 
    fn clv(&mut self, pc : usize) -> usize {
-      println!("CLV");
+      //println!("CLV");
       self.pc += 1;
       self.write_flag(FlagWriter::OVER, false);
       return pc+1;
    }
 
    fn sed(&mut self, pc : usize) -> usize {
-      println!("SED");
+      //println!("SED");
       self.pc += 1;
       self.write_flag(FlagWriter::DEC, true);
       return pc+1;
    }
 
    fn sec(&mut self, pc : usize) -> usize {
-      println!("SEC");
+      //println!("SEC");
       self.write_flag(FlagWriter::CARRY, true);
       return pc+1;
    }
@@ -248,7 +255,7 @@ impl Atari {
 
    /* #region LDX */
    fn ldx(&mut self, mode: Mode, pc : usize) -> usize {
-      println!("LDX {}", mode.to_string());
+      //println!("LDX {}", mode.to_string());
       let mut pc = pc;
 
       let target_loc = match mode {
@@ -276,7 +283,7 @@ impl Atari {
    /* #region LDY */
 
     fn ldy(&mut self, mode: Mode, pc : usize) -> usize {
-      println!("LDY {}", mode.to_string());
+      //println!("LDY {}", mode.to_string());
       let mut pc = pc;
 
       let target_loc = match mode {
@@ -304,7 +311,7 @@ impl Atari {
    /* #region LDA */
 
    fn lda(&mut self, mode: Mode, pc : usize) -> usize {
-      println!("LDA {}", mode.to_string());
+      //println!("LDA {}", mode.to_string());
       let mut pc = pc;
 
       let target_loc = match mode {
@@ -333,7 +340,7 @@ impl Atari {
    /* #region STA */
 
    fn sta(&mut self, mode: Mode, pc : usize) -> usize {
-      println!("STA {}", mode.to_string());
+      //println!("STA {}", mode.to_string());
       let mut pc = pc;
 
       let target_loc = match mode {
@@ -359,12 +366,12 @@ impl Atari {
 
    /* #region Stack Instructions */
    fn txs(&mut self, pc : usize) -> usize {
-      println!("TXS");
+      //println!("TXS");
       self.sPnt = self.xReg;
       return pc + 1;
    }
    fn tsx(&mut self, pc : usize) -> usize {
-      println!("TSX");
+      //println!("TSX");
       self.xReg = self.sPnt;
       return pc + 1;
    }
@@ -372,50 +379,50 @@ impl Atari {
 
     /* #region Register Instructions */
     fn tax(&mut self, pc : usize) -> usize {
-      println!("TAX");
+      ////println!("TAX");
       self.xReg = self.aReg;
       self.set_flags(self.xReg);
       return pc + 1;
    }
    fn txa(&mut self, pc : usize) -> usize {
-      println!("TXA");
+      ////println!("TXA");
       self.aReg = self.xReg;
       self.set_flags(self.aReg);
       return pc + 1;
    }
    fn dex(&mut self, pc : usize) -> usize {
-      println!("DEX");
-      println!("{}",self.xReg);
+      ////println!("DEX");
+      ////println!("{}",self.xReg);
       self.xReg -= 1;
       self.set_flags(self.xReg);
       return pc + 1;
    }
    fn inx(&mut self, pc : usize) -> usize {
-      println!("INX");
+      ////println!("INX");
       self.xReg += 1;
       self.set_flags(self.xReg);
       return pc + 1;
    }
    fn tay(&mut self, pc : usize) -> usize {
-      println!("TAY");
+      ////println!("TAY");
       self.yReg = self.aReg;
       self.set_flags(self.yReg);
       return pc + 1;
    }
    fn tya(&mut self, pc : usize) -> usize {
-      println!("TYA");
+      ////println!("TYA");
       self.aReg = self.yReg;
       self.set_flags(self.aReg);
       return pc + 1;
    }
    fn dey(&mut self, pc : usize) -> usize {
-      println!("DEY");
+      ////println!("DEY");
       self.yReg -= 1;
       self.set_flags(self.yReg);
       return pc + 1;
    }
    fn iny(&mut self, pc : usize) -> usize {
-      println!("INY");
+      //println!("INY");
       self.yReg += 1;
       self.set_flags(self.yReg);
       return pc + 1;
@@ -424,7 +431,7 @@ impl Atari {
 
    /* #region Branching Instructions */
    fn bne(&mut self, pc : usize) -> usize {
-      println!("BNE");
+      //println!("BNE");
       if self.read_flag(Flag::ZERO) {
          return pc+2;
       } else {
@@ -439,7 +446,7 @@ impl Atari {
 
    /* #region Jumping Instructions */
    fn jmp(&mut self, mode: Mode, pc : usize) -> usize {
-      println!("BNE");
+      //println!("BNE");
 
       let target_loc = match mode {
          Mode::ABS => self.abs_addr(pc) as usize,
@@ -451,7 +458,63 @@ impl Atari {
    /* #endregion */
 }
 
+/// Representation of the application state. In this example, a box will bounce around the screen.
+struct World {
+   box_x: i16,
+   box_y: i16,
+   velocity_x: i16,
+   velocity_y: i16,
+}
 
+impl World {
+   /// Create a new `World` instance that can draw a moving box.
+   fn new() -> Self {
+       Self {
+           box_x: 24,
+           box_y: 16,
+           velocity_x: 1,
+           velocity_y: 1,
+       }
+   }
+
+   /// Update the `World` internal state; bounce the box around the screen.
+   fn update(&mut self) {
+       if self.box_x <= 0 || self.box_x + BOX_SIZE > WIDTH as i16 {
+           self.velocity_x *= -1;
+       }
+       if self.box_y <= 0 || self.box_y + BOX_SIZE > HEIGHT as i16 {
+           self.velocity_y *= -1;
+       }
+
+       self.box_x += self.velocity_x;
+       self.box_y += self.velocity_y;
+   }
+
+   /// Draw the `World` state to the frame buffer.
+   ///
+   /// Assumes the default texture format: [`wgpu::TextureFormat::Rgba8UnormSrgb`]
+   fn draw(&self, frame: &mut [u8], atari: &mut Atari) {
+       for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
+           let x = (i % WIDTH as usize) as i16;
+           let y = (i / WIDTH as usize) as i16;
+
+           let inside_the_box = x >= self.box_x
+               && x < self.box_x + BOX_SIZE
+               && y >= self.box_y
+               && y < self.box_y + BOX_SIZE;
+
+           let rgba = if inside_the_box {
+               [0x5e, 0x48, 0xe8, 0xff]
+           } else {
+               [0x48, 0xb2, 0xe8, 0xff]
+           };
+
+           atari.execute_step();
+
+           pixel.copy_from_slice(&rgba);
+       }
+   }
+}
 
 
 fn main() {
@@ -461,7 +524,7 @@ fn main() {
    assert_eq!(args.len(), 2, "wrong number of arguments provided! provide a filename only");
    let filename = &args[1];
 
-   println!("reading file: {}", filename);
+   //println!("reading file: {}", filename);
 
    let rom = rom_read::get_file_as_byte_vec(filename);
    let atari : Atari = Atari {memory: mem_load::write_rom_to_mem(rom),
@@ -474,13 +537,67 @@ fn main() {
    main_loop(atari);
 }
 
-fn main_loop(mut atari : Atari) {
+const WIDTH: u32 = 320;
+const HEIGHT: u32 = 240;
+const BOX_SIZE: i16 = 64;
 
-  let mut beamX = 0;
-  let mut beamY = 0;
+fn main_loop(mut atari : Atari) -> Result<(), Error> {
+   env_logger::init();
+   let event_loop = EventLoop::new();
+   let mut input = WinitInputHelper::new();
 
-  let width = 228;
-  let height = 262;
+   let window = {
+       let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
+       WindowBuilder::new()
+           .with_title("Hello Pixels")
+           .with_inner_size(size)
+           .with_min_inner_size(size)
+           .build(&event_loop)
+           .unwrap()
+   };
+
+   let mut pixels = {
+       let window_size = window.inner_size();
+       let surface = Surface::create(&window);
+       let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, surface);
+       Pixels::new(WIDTH, HEIGHT, surface_texture)?
+   };
+   let mut world = World::new();
+
+
+   event_loop.run(move |event, _, control_flow| {
+       // Draw the current frame
+       if let Event::RedrawRequested(_) = event {
+          
+           world.draw(pixels.get_frame(), &mut atari);
+           if pixels
+               .render()
+               .map_err(|e| error!("pixels.render() failed: {}", e))
+               .is_err()
+           {
+               *control_flow = ControlFlow::Exit;
+               return;
+           }
+       }
+
+       // Handle input events
+       if input.update(event) {
+           // Close events
+           if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
+               *control_flow = ControlFlow::Exit;
+               return;
+           }
+
+           // Resize the window
+           if let Some(size) = input.window_resized() {
+               pixels.resize(size.width, size.height);
+           }
+
+           // Update internal state and request a redraw
+           world.update();
+           window.request_redraw();
+       }
+   });
 
 }
 
