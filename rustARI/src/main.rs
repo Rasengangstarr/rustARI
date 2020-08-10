@@ -494,19 +494,16 @@ impl World {
    ///
    /// Assumes the default texture format: [`wgpu::TextureFormat::Rgba8UnormSrgb`]
    fn draw(&self, frame: &mut [u8], atari: &mut Atari) {
+      
        for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
            let x = (i % WIDTH as usize) as i16;
            let y = (i / WIDTH as usize) as i16;
 
-           let inside_the_box = x >= self.box_x
-               && x < self.box_x + BOX_SIZE
-               && y >= self.box_y
-               && y < self.box_y + BOX_SIZE;
-
-           let rgba = if inside_the_box {
-               [0x5e, 0x48, 0xe8, 0xff]
+            println!("{}", atari.read_mem(0x09));
+           let rgba = if atari.read_mem(0x09) != 0 {
+               [0xff, 0x00, 0x00, 0xff]
            } else {
-               [0x48, 0xb2, 0xe8, 0xff]
+               [0x00, 0x00, 0x00, 0xff]
            };
 
            atari.execute_step();
