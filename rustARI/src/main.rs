@@ -148,6 +148,7 @@ impl Atari {
          //Stack Instructions
          0x9A => self.txs(pc),
          0xBA => self.tsx(pc),
+         0x48 => self.pha(pc),
 
          //Register Instructions - NEEDS TESTING
          0xAA => self.tax(pc),
@@ -423,6 +424,12 @@ impl Atari {
       self.cycles+=2;
       return pc + 1;
    }
+   fn pha(&mut self, pc: usize) -> usize {
+      self.write_mem(0x100 + self.sPnt as usize, self.aReg);
+      self.sPnt = self.sPnt.wrapping_sub(1);
+      self.cycles += 3;
+      return pc + 1;
+   }
    /* #endregion */
 
     /* #region Register Instructions */
@@ -442,8 +449,13 @@ impl Atari {
    }
    fn dex(&mut self, pc : usize) -> usize {
       ////println!("DEX");
-      ////println!("{}",self.xReg);
-      self.xReg -= 1;
+      println!("{}",self.xReg);
+      if self.xReg == 0 {
+         self.xReg = 0xFF;
+      }
+      else {
+         self.xReg -= 1;
+      }
       self.set_flags(self.xReg);
       self.cycles += 2;
       return pc + 1;
@@ -471,7 +483,12 @@ impl Atari {
    }
    fn dey(&mut self, pc : usize) -> usize {
       ////println!("DEY");
-      self.yReg -= 1;
+      if self.yReg == 0 {
+         self.yReg = 0xFF;
+      }
+      else {
+         self.yReg -= 1;
+      }
       self.set_flags(self.yReg);
       self.cycles += 2;
       return pc + 1;
