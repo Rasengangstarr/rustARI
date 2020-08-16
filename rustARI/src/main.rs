@@ -19,7 +19,6 @@ use winit_input_helper::WinitInputHelper;
 
 use std::io;
 
-
 mod rom_read;
 mod mem_load;
 
@@ -84,6 +83,9 @@ impl Atari {
 
    fn write_mem(&mut self, cell : usize, val : u8) {
       self.memory[cell] = val;
+      let cell_bytes : u16 = cell as u16;
+      let tia_addr = self.translate_for_tia(cell_bytes) as usize;
+      self.memory[tia_addr] = val;
    }
 
    fn read_flag(&self, flag : Flag) -> bool {
@@ -208,6 +210,11 @@ impl Atari {
    fn translate_addr(&mut self, mut addr : u16) -> u16
    {
       addr &= 0b0001_1111_1111_1111;
+      return addr;
+   }
+   fn translate_for_tia(&mut self, mut addr : u16) -> u16
+   {
+      addr &= 0b0001_0000_1011_1111;
       return addr;
    }
 
@@ -383,11 +390,6 @@ impl Atari {
          Mode::ABSY => self.abs_addr_y(pc) as usize,
          _ => panic!(INV_ADD_PANIC)
       };
-
-      if self.xReg == 0x49 {
-         self.write_mem(0x09, self.aReg);
-      }
-
 
       self.write_mem(target_loc, self.aReg);
 
@@ -724,7 +726,7 @@ mod tests {
     fn test_ldx_abs() {
         let mut atari = setup_atari();
         let expected = 0x9;
-        atari.memory[0x1012] = expected;
+        atari.memory[0x1210] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
         atari.ldx(Mode::ABS, 0);
@@ -735,7 +737,7 @@ mod tests {
     fn test_ldx_absy() {
         let mut atari = setup_atari();
         let expected = 0x9;
-        atari.memory[0x1012+5] = expected;
+        atari.memory[0x1210+5] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
         atari.yReg = 5;
@@ -786,7 +788,7 @@ mod tests {
     fn test_ldy_abs() {
         let mut atari = setup_atari();
         let expected = 0x9;
-        atari.memory[0x1012] = expected;
+        atari.memory[0x1210] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
         atari.ldy(Mode::ABS, 0);
@@ -797,7 +799,7 @@ mod tests {
     fn test_ldy_absy() {
         let mut atari = setup_atari();
         let expected = 0x9;
-        atari.memory[0x1012+5] = expected;
+        atari.memory[0x1210+5] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
         atari.xReg = 5;
@@ -871,6 +873,13 @@ mod tests {
       atari.sPnt = 0x12;
       atari.tsx(0);
       assert_eq!(atari.xReg, 0x12);
+   }
+
+   #[test]
+   fn test_translate_for_tia() {
+      let mut atari = setup_atari();
+      let result = atari.translate_for_tia(0xEF3F);
+      assert_eq!(result, 0x3F);
    }
 
 }
