@@ -174,13 +174,15 @@ impl Atari {
       }
    }
 
-   fn set_flags(&mut self, val : u8) {
+   fn set_flag_zero(&mut self, val : u8) {
       if val == 0 {
          self.write_flag(FlagWriter::ZERO, true);
       } else {
          self.write_flag(FlagWriter::ZERO, false);
       }
+   }
 
+   fn set_flag_neg(&mut self, val : u8) {
       if val & (1 << 1) != 0 {
          self.write_flag(FlagWriter::NEG, true);
       } else {
@@ -218,6 +220,33 @@ impl Atari {
       addr &= 0b0001_0000_1011_1111;
       return addr;
    }
+
+    /* #region ADC (Add with carry) Instruction */
+
+   fn adc(&mut self, value: u8) {
+      let mut result: u16 = self.aReg as u16 + value as u16;
+
+      if self.read_flag(Flag::CARRY) {
+          result += 1;
+      }
+
+      if self.read_flag(Flag::DEC) {
+          // BCD Mode
+          if result & 0x0f > 0x09 {
+              result += 0x06;
+          }
+
+          if result & 0xf0 > 0x90 {
+              result += 0x60;
+          }
+      }
+
+      self.aReg = result as u8;
+      self.flag_set_if(status_flags::NEG, self.r.a & 0x80 != 0);
+      self.flag_set_if(status_flags::ZERO, self.r.a == 0);
+      self.flag_set_if(status_flags::CARRY, result > 0xff);
+      self.flag_set_if(status_flags::OVER, result >= 128);
+  }
 
    /* #region Flag (Processor Status) Instructions */
    fn sei(&mut self, pc : usize) -> usize {
@@ -303,7 +332,8 @@ impl Atari {
          _ => 4
       };
 
-      self.set_flags(self.xReg);
+      self.set_flag_zero(self.xReg);
+      self.set_flag_neg(self.xReg);
       return pc;
    }
    /* #endregion */
@@ -337,7 +367,8 @@ impl Atari {
          _ => 4
       };
 
-      self.set_flags(self.xReg);
+      self.set_flag_zero(self.xReg);
+      self.set_flag_neg(self.xReg);
       return pc;
    }
    /* #endregion */
@@ -436,14 +467,16 @@ impl Atari {
     fn tax(&mut self, pc : usize) -> usize {
       ////println!("TAX");
       self.xReg = self.aReg;
-      self.set_flags(self.xReg);
+      self.set_flag_zero(self.xReg);
+      self.set_flag_neg(self.xReg);
       self.cycles += 2;
       return pc + 1;
    }
    fn txa(&mut self, pc : usize) -> usize {
       ////println!("TXA");
       self.aReg = self.xReg;
-      self.set_flags(self.aReg);
+      self.set_flag_zero(self.aReg);
+      self.set_flag_neg(self.aReg);
       self.cycles += 2;
       return pc + 1;
    }
