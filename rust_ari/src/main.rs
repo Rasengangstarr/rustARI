@@ -3,7 +3,6 @@ extern crate strum;
 extern crate strum_macros;
 
 use std::env;
-use std::string::ToString;
 
 use std::time::Instant;
 
@@ -17,7 +16,6 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use std::io;
 
 mod rom_read;
 mod mem_load;
@@ -68,10 +66,10 @@ struct Atari {
    memory:  [u8; 0x1FFF],
    flags: u8,
    pc: usize,
-   xReg: u8,
-   yReg: u8,
-   aReg: u8,
-   sPnt: u8,
+   x_reg: u8,
+   y_reg: u8,
+   a_reg: u8,
+   s_pnt: u8,
    cycles: usize
 }
 
@@ -200,14 +198,14 @@ impl Atari {
       let p2 : u16 = self.read_mem(pc+1) as u16;
       let p1 : u16 = self.read_mem(pc+2) as u16;
       let target_loc : u16 = self.translate_addr(p1 << 8 | p2);
-      let y_reg : u16 = self.yReg as u16;
+      let y_reg : u16 = self.y_reg as u16;
       return (target_loc + y_reg) as usize;
    }
    fn abs_addr_x (&mut self, pc : usize) -> usize {
       let p2 : u16 = self.read_mem(pc+1) as u16;
       let p1 : u16 = self.read_mem(pc+2) as u16;
       let target_loc : u16 = p1 << 8 | p2;
-      let x_reg : u16 = self.xReg as u16;
+      let x_reg : u16 = self.x_reg as u16;
       return (target_loc + x_reg) as usize;
    }
    fn translate_addr(&mut self, mut addr : u16) -> u16
@@ -224,7 +222,7 @@ impl Atari {
     /* #region ADC (Add with carry) Instruction */
 
    fn adc(&mut self, value: u8) {
-      let mut result: u16 = self.aReg as u16 + value as u16;
+      let mut result: u16 = self.a_reg as u16 + value as u16;
 
       if self.read_flag(Flag::CARRY) {
           result += 1;
@@ -241,11 +239,11 @@ impl Atari {
           }
       }
 
-      self.aReg = result as u8;
-      self.flag_set_if(status_flags::NEG, self.r.a & 0x80 != 0);
-      self.flag_set_if(status_flags::ZERO, self.r.a == 0);
-      self.flag_set_if(status_flags::CARRY, result > 0xff);
-      self.flag_set_if(status_flags::OVER, result >= 128);
+      self.a_reg = result as u8;
+      // self.flag_set_if(status_flags::NEG, self.r.a & 0x80 != 0);
+      // self.flag_set_if(status_flags::ZERO, self.r.a == 0);
+      // self.flag_set_if(status_flags::CARRY, result > 0xff);
+      // self.flag_set_if(status_flags::OVER, result >= 128);
   }
 
    /* #region Flag (Processor Status) Instructions */
@@ -312,13 +310,13 @@ impl Atari {
       let target_loc = match mode {
          Mode::IMM => pc+1 as usize,
          Mode::ZP => self.read_mem(pc+1) as usize,
-         Mode::ZPY => (self.read_mem(pc+1) + self.yReg) as usize,
+         Mode::ZPY => (self.read_mem(pc+1) + self.y_reg) as usize,
          Mode::ABS => self.abs_addr(pc) as usize,
          Mode::ABSY => self.abs_addr_y(pc) as usize,
          _ => panic!(INV_ADD_PANIC)
       };
 
-      self.xReg = self.read_mem(target_loc);
+      self.x_reg = self.read_mem(target_loc);
 
       pc += match mode {
          Mode::IMM | Mode::ZP | Mode::ZPY => 2,
@@ -332,8 +330,8 @@ impl Atari {
          _ => 4
       };
 
-      self.set_flag_zero(self.xReg);
-      self.set_flag_neg(self.xReg);
+      self.set_flag_zero(self.x_reg);
+      self.set_flag_neg(self.x_reg);
       return pc;
    }
    /* #endregion */
@@ -347,13 +345,13 @@ impl Atari {
       let target_loc = match mode {
          Mode::IMM => pc+1 as usize,
          Mode::ZP => self.read_mem(pc+1) as usize,
-         Mode::ZPX => (self.read_mem(pc+1) + self.xReg) as usize,
+         Mode::ZPX => (self.read_mem(pc+1) + self.x_reg) as usize,
          Mode::ABS => self.abs_addr(pc) as usize,
          Mode::ABSX => self.abs_addr_x(pc) as usize,
          _ => panic!(INV_ADD_PANIC)
       };
 
-      self.yReg = self.read_mem(target_loc);
+      self.y_reg = self.read_mem(target_loc);
 
       pc += match mode {
          Mode::IMM | Mode::ZP | Mode::ZPX => 2,
@@ -367,8 +365,8 @@ impl Atari {
          _ => 4
       };
 
-      self.set_flag_zero(self.xReg);
-      self.set_flag_neg(self.xReg);
+      self.set_flag_zero(self.x_reg);
+      self.set_flag_neg(self.x_reg);
       return pc;
    }
    /* #endregion */
@@ -382,14 +380,14 @@ impl Atari {
       let target_loc = match mode {
          Mode::IMM => pc+1 as usize,
          Mode::ZP => self.read_mem(pc+1) as usize,
-         Mode::ZPX => (self.read_mem(pc+1) + self.xReg) as usize,
+         Mode::ZPX => (self.read_mem(pc+1) + self.x_reg) as usize,
          Mode::ABS => self.abs_addr(pc) as usize,
          Mode::ABSX => self.abs_addr_x(pc) as usize,
          Mode::ABSY => self.abs_addr_y(pc) as usize,
          _ => panic!(INV_ADD_PANIC)
       };
  
-      self.aReg = self.read_mem(target_loc);
+      self.a_reg = self.read_mem(target_loc);
 
       pc += match mode {
          Mode::IMM | Mode::ZP | Mode::ZPX => 2,
@@ -403,7 +401,7 @@ impl Atari {
          _ => 4
       };
 
-      self.set_flags(self.aReg);
+      //self.set_flags(self.a_reg);
       return pc;
    }
    /* #endregion */
@@ -416,14 +414,14 @@ impl Atari {
 
       let target_loc = match mode {
          Mode::ZP => self.read_mem(pc+1) as usize,
-         Mode::ZPX => (self.read_mem(pc+1) + self.xReg) as usize,
+         Mode::ZPX => (self.read_mem(pc+1) + self.x_reg) as usize,
          Mode::ABS => self.abs_addr(pc) as usize,
          Mode::ABSX => self.abs_addr_x(pc) as usize,
          Mode::ABSY => self.abs_addr_y(pc) as usize,
          _ => panic!(INV_ADD_PANIC)
       };
 
-      self.write_mem(target_loc, self.aReg);
+      self.write_mem(target_loc, self.a_reg);
 
       pc += match mode {
          Mode::ZP | Mode::ZPX => 2,
@@ -445,19 +443,19 @@ impl Atari {
    /* #region Stack Instructions */
    fn txs(&mut self, pc : usize) -> usize {
       //println!("TXS");
-      self.sPnt = self.xReg;
+      self.s_pnt = self.x_reg;
       self.cycles+=2;
       return pc + 1;
    }
    fn tsx(&mut self, pc : usize) -> usize {
       //println!("TSX");
-      self.xReg = self.sPnt;
+      self.x_reg = self.s_pnt;
       self.cycles+=2;
       return pc + 1;
    }
    fn pha(&mut self, pc: usize) -> usize {
-      self.write_mem(0x100 + self.sPnt as usize, self.aReg);
-      self.sPnt = self.sPnt.wrapping_sub(1);
+      self.write_mem(0x100 + self.s_pnt as usize, self.a_reg);
+      self.s_pnt = self.s_pnt.wrapping_sub(1);
       self.cycles += 3;
       return pc + 1;
    }
@@ -466,70 +464,70 @@ impl Atari {
     /* #region Register Instructions */
     fn tax(&mut self, pc : usize) -> usize {
       ////println!("TAX");
-      self.xReg = self.aReg;
-      self.set_flag_zero(self.xReg);
-      self.set_flag_neg(self.xReg);
+      self.x_reg = self.a_reg;
+      self.set_flag_zero(self.x_reg);
+      self.set_flag_neg(self.x_reg);
       self.cycles += 2;
       return pc + 1;
    }
    fn txa(&mut self, pc : usize) -> usize {
       ////println!("TXA");
-      self.aReg = self.xReg;
-      self.set_flag_zero(self.aReg);
-      self.set_flag_neg(self.aReg);
+      self.a_reg = self.x_reg;
+      self.set_flag_zero(self.a_reg);
+      self.set_flag_neg(self.a_reg);
       self.cycles += 2;
       return pc + 1;
    }
    fn dex(&mut self, pc : usize) -> usize {
       ////println!("DEX");
-      println!("{}",self.xReg);
-      if self.xReg == 0 {
-         self.xReg = 0xFF;
+      println!("{}",self.x_reg);
+      if self.x_reg == 0 {
+         self.x_reg = 0xFF;
       }
       else {
-         self.xReg -= 1;
+         self.x_reg -= 1;
       }
-      self.set_flags(self.xReg);
+      //self.set_flags(self.x_reg);
       self.cycles += 2;
       return pc + 1;
    }
    fn inx(&mut self, pc : usize) -> usize {
       ////println!("INX");
-      self.xReg += 1;
-      self.set_flags(self.xReg);
+      self.x_reg += 1;
+      //self.set_flags(self.x_reg);
       self.cycles += 2;
       return pc + 1;
    }
    fn tay(&mut self, pc : usize) -> usize {
       ////println!("TAY");
-      self.yReg = self.aReg;
-      self.set_flags(self.yReg);
+      self.y_reg = self.a_reg;
+      //self.set_flags(self.y_reg);
       self.cycles += 2;
       return pc + 1;
    }
    fn tya(&mut self, pc : usize) -> usize {
       ////println!("TYA");
-      self.aReg = self.yReg;
-      self.set_flags(self.aReg);
+      self.a_reg = self.y_reg;
+      //self.set_flags(self.a_reg);
       self.cycles += 2;
       return pc + 1;
    }
    fn dey(&mut self, pc : usize) -> usize {
       ////println!("DEY");
-      if self.yReg == 0 {
-         self.yReg = 0xFF;
+      if self.y_reg == 0 {
+         self.y_reg = 0xFF;
       }
       else {
-         self.yReg -= 1;
+         self.y_reg -= 1;
       }
-      self.set_flags(self.yReg);
+      //self.set_flags(self.y_reg);
       self.cycles += 2;
       return pc + 1;
    }
    fn iny(&mut self, pc : usize) -> usize {
       //println!("INY");
-      self.yReg += 1;
-      self.set_flags(self.yReg);
+      self.y_reg += 1;
+      //self.set_flags(self.y_reg);
       self.cycles += 2;
       return pc + 1;
    }
@@ -643,12 +641,12 @@ fn main() {
    let atari : Atari = Atari {memory: mem_load::write_rom_to_mem(rom),
                                     flags: 0,
                                     pc:0x1000,
-                                    xReg: 0,
-                                    yReg: 0,
-                                    aReg: 0,
-                                    sPnt: 0,
+                                    x_reg: 0,
+                                    y_reg: 0,
+                                    a_reg: 0,
+                                    s_pnt: 0,
                                     cycles: 0};
-   main_loop(atari);
+   main_loop(atari).unwrap();
 }
 
 const WIDTH: u32 = 228;
@@ -734,10 +732,10 @@ mod tests {
         return Atari {memory: [0; 0x1FFF],
             flags: 0,
             pc:0x1000,
-            xReg: 0,
-            yReg: 0,
-            aReg: 0,
-            sPnt: 0,
+            x_reg: 0,
+            y_reg: 0,
+            a_reg: 0,
+            s_pnt: 0,
             cycles: 0};
         }
 
@@ -747,7 +745,7 @@ mod tests {
         let expected = 0x10;
         atari.memory[1] = expected;
         atari.ldx(Mode::IMM, 0);
-        assert_eq!(atari.xReg, expected);
+        assert_eq!(atari.x_reg, expected);
     }
 
     #[test]
@@ -757,7 +755,7 @@ mod tests {
         atari.memory[0x10] = expected;
         atari.memory[1]    = 0x10;
         atari.ldx(Mode::ZP, 0);
-        assert_eq!(atari.xReg, expected);
+        assert_eq!(atari.x_reg, expected);
     }
 
     #[test]
@@ -767,9 +765,9 @@ mod tests {
         atari.memory[0x10+5] = expected;
         atari.memory[0x10] = 0x12;
         atari.memory[1]    = 0x10;
-        atari.yReg         = 5;
+        atari.y_reg         = 5;
         atari.ldx(Mode::ZPY, 0);
-        assert_eq!(atari.xReg, expected);
+        assert_eq!(atari.x_reg, expected);
     }
 
     #[test]
@@ -780,7 +778,7 @@ mod tests {
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
         atari.ldx(Mode::ABS, 0);
-        assert_eq!(atari.xReg, expected);
+        assert_eq!(atari.x_reg, expected);
     }
 
     #[test]
@@ -790,9 +788,9 @@ mod tests {
         atari.memory[0x1210+5] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
-        atari.yReg = 5;
+        atari.y_reg = 5;
         atari.ldx(Mode::ABSY, 0);
-        assert_eq!(atari.xReg, expected);
+        assert_eq!(atari.x_reg, expected);
     }
 
     #[test]
@@ -808,7 +806,7 @@ mod tests {
         let expected = 0x10;
         atari.memory[1] = expected;
         atari.ldy(Mode::IMM, 0);
-        assert_eq!(atari.yReg, expected);
+        assert_eq!(atari.y_reg, expected);
     }
 
 
@@ -819,7 +817,7 @@ mod tests {
         atari.memory[0x10] = expected;
         atari.memory[1]    = 0x10;
         atari.ldy(Mode::ZP, 0);
-        assert_eq!(atari.yReg, expected);
+        assert_eq!(atari.y_reg, expected);
     }
 
     #[test]
@@ -829,9 +827,9 @@ mod tests {
         atari.memory[0x10+5] = expected;
         atari.memory[0x10] = 0x12;
         atari.memory[1]    = 0x10;
-        atari.xReg         = 5;
+        atari.x_reg         = 5;
         atari.ldy(Mode::ZPX, 0);
-        assert_eq!(atari.yReg, expected);
+        assert_eq!(atari.y_reg, expected);
     }
 
     #[test]
@@ -842,7 +840,7 @@ mod tests {
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
         atari.ldy(Mode::ABS, 0);
-        assert_eq!(atari.yReg, expected);
+        assert_eq!(atari.y_reg, expected);
     }
 
     #[test]
@@ -852,9 +850,9 @@ mod tests {
         atari.memory[0x1210+5] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
-        atari.xReg = 5;
+        atari.x_reg = 5;
         atari.ldy(Mode::ABSX, 0);
-        assert_eq!(atari.yReg, expected);
+        assert_eq!(atari.y_reg, expected);
     }
 
     #[test]
@@ -912,17 +910,17 @@ mod tests {
    #[test]
    fn test_txs() {
       let mut atari = setup_atari();
-      atari.xReg = 0x12;
+      atari.x_reg = 0x12;
       atari.txs(0);
-      assert_eq!(atari.sPnt, 0x12);
+      assert_eq!(atari.s_pnt, 0x12);
    }
 
    #[test]
    fn test_tsx() {
       let mut atari = setup_atari();
-      atari.sPnt = 0x12;
+      atari.s_pnt = 0x12;
       atari.tsx(0);
-      assert_eq!(atari.xReg, 0x12);
+      assert_eq!(atari.x_reg, 0x12);
    }
 
    #[test]
