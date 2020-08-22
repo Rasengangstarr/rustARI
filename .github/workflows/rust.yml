@@ -13,10 +13,14 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    env:
+      working-directory: ./rust-ari 
 
     steps:
     - uses: actions/checkout@v2
     - name: Build
+      working-directory: ./rust-ari
       run: cargo build --verbose
     - name: Run tests
+      working-directory: ./rust-ari
       run: cargo test --verbose
