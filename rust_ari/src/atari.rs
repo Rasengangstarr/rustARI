@@ -615,7 +615,7 @@ mod tests {
         atari.memory[1] = expected;
         let pc = atari.ldx(Mode::IMM, 0);
         assert_eq!(atari.x_reg, expected);
-        assert_eq!(pc, 3);
+        assert_eq!(pc, 2);
         assert_eq!(atari.cycles, 2);
         assert_eq!(atari.read_flag(Flag::NEG), false);
         assert_eq!(atari.read_flag(Flag::ZERO), false);
