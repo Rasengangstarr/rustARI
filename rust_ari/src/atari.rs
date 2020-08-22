@@ -89,6 +89,7 @@ enum FlagWriter {
           self.flags &= !fw;
        }
     }
+    
     /* #endregion */
  
     pub fn execute_step(&mut self) {
@@ -104,7 +105,7 @@ enum FlagWriter {
           0xD8 => self.cld(pc),
           0xF8 => self.sed(pc),
  
-          //LDX (Load X register)
+          //LDX (Load X regisiter)
           0xA2 => self.ldx(Mode::IMM, pc),
           0xA6 => self.ldx(Mode::ZP, pc),
           0xB6 => self.ldx(Mode::ZPY, pc),
@@ -171,7 +172,7 @@ enum FlagWriter {
     }
  
     fn set_flag_neg(&mut self, val : u8) {
-       if val & (1 << 1) != 0 {
+       if val >= 0x40 {
           self.write_flag(FlagWriter::NEG, true);
        } else {
           self.write_flag(FlagWriter::NEG, false);
@@ -317,9 +318,18 @@ enum FlagWriter {
        self.cycles += match mode {
           Mode::IMM => 2,
           Mode::ZP => 3,
+          Mode::ABSY => (
+               if target_loc < 0xFF
+               {
+                  4
+               } else
+               {
+                  5
+               }
+            ),
           _ => 4
        };
- 
+
        self.set_flag_zero(self.x_reg);
        self.set_flag_neg(self.x_reg);
        return pc;
@@ -350,13 +360,22 @@ enum FlagWriter {
        };
  
        self.cycles += match mode {
-          Mode::IMM => 2,
-          Mode::ZP => 3,
-          _ => 4
-       };
+         Mode::IMM => 2,
+         Mode::ZP => 3,
+         Mode::ABSX => (
+              if target_loc < 0xFF
+              {
+                 4
+              } else
+              {
+                 5
+              }
+           ),
+         _ => 4
+      };
  
-       self.set_flag_zero(self.x_reg);
-       self.set_flag_neg(self.x_reg);
+       self.set_flag_zero(self.y_reg);
+       self.set_flag_neg(self.y_reg);
        return pc;
     }
     /* #endregion */
@@ -556,7 +575,7 @@ enum FlagWriter {
  }
  
 
- #[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -570,14 +589,18 @@ mod tests {
             s_pnt: 0,
             cycles: 0};
         }
-
+   /* #region ldx tests */
     #[test]
     fn test_ldx_imm() {
         let mut atari = setup_atari();
         let expected = 0x10;
         atari.memory[1] = expected;
-        atari.ldx(Mode::IMM, 0);
+        let pc = atari.ldx(Mode::IMM, 0);
         assert_eq!(atari.x_reg, expected);
+        assert_eq!(pc, 2);
+        assert_eq!(atari.cycles, 2);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
     #[test]
@@ -586,8 +609,12 @@ mod tests {
         let expected = 0x12;
         atari.memory[0x10] = expected;
         atari.memory[1]    = 0x10;
-        atari.ldx(Mode::ZP, 0);
+        let pc = atari.ldx(Mode::ZP, 0);
         assert_eq!(atari.x_reg, expected);
+        assert_eq!(pc, 2);
+        assert_eq!(atari.cycles, 3);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
     #[test]
@@ -598,8 +625,12 @@ mod tests {
         atari.memory[0x10] = 0x12;
         atari.memory[1]    = 0x10;
         atari.y_reg         = 5;
-        atari.ldx(Mode::ZPY, 0);
+        let pc = atari.ldx(Mode::ZPY, 0);
         assert_eq!(atari.x_reg, expected);
+        assert_eq!(atari.cycles, 4);
+        assert_eq!(pc, 2);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
     #[test]
@@ -609,20 +640,44 @@ mod tests {
         atari.memory[0x1210] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
-        atari.ldx(Mode::ABS, 0);
+        let pc = atari.ldx(Mode::ABS, 0);
         assert_eq!(atari.x_reg, expected);
+        assert_eq!(atari.cycles, 4);
+        assert_eq!(pc, 3);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
     #[test]
     fn test_ldx_absy() {
         let mut atari = setup_atari();
         let expected = 0x9;
+        atari.memory[0x0010+5] = expected;
+        atari.memory[1]    = 0x10;
+        atari.memory[2]    = 0x00;
+        atari.y_reg = 5;
+        let pc = atari.ldx(Mode::ABSY, 0);
+        assert_eq!(atari.x_reg, expected);
+        assert_eq!(atari.cycles, 4);
+        assert_eq!(pc, 3);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
+    }
+
+    #[test]
+    fn test_ldx_absy_page_boundary() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
         atari.memory[0x1210+5] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
         atari.y_reg = 5;
-        atari.ldx(Mode::ABSY, 0);
+        let pc = atari.ldx(Mode::ABSY, 0);
         assert_eq!(atari.x_reg, expected);
+        assert_eq!(atari.cycles, 5);
+        assert_eq!(pc, 3);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
     #[test]
@@ -632,15 +687,21 @@ mod tests {
         atari.ldx(Mode::ABSX, 0);
     }
 
+    /* #endregion */
+
+    /* #region ldy tests */
     #[test]
     fn test_ldy_imm() {
         let mut atari = setup_atari();
         let expected = 0x10;
         atari.memory[1] = expected;
-        atari.ldy(Mode::IMM, 0);
+        let pc = atari.ldy(Mode::IMM, 0);
         assert_eq!(atari.y_reg, expected);
+        assert_eq!(pc, 2);
+        assert_eq!(atari.cycles, 2);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
-
 
     #[test]
     fn test_ldy_zp() {
@@ -648,8 +709,12 @@ mod tests {
         let expected = 0x12;
         atari.memory[0x10] = expected;
         atari.memory[1]    = 0x10;
-        atari.ldy(Mode::ZP, 0);
+        let pc = atari.ldy(Mode::ZP, 0);
         assert_eq!(atari.y_reg, expected);
+        assert_eq!(pc, 2);
+        assert_eq!(atari.cycles, 3);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
     #[test]
@@ -660,8 +725,12 @@ mod tests {
         atari.memory[0x10] = 0x12;
         atari.memory[1]    = 0x10;
         atari.x_reg         = 5;
-        atari.ldy(Mode::ZPX, 0);
+        let pc = atari.ldy(Mode::ZPX, 0);
         assert_eq!(atari.y_reg, expected);
+        assert_eq!(atari.cycles, 4);
+        assert_eq!(pc, 2);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
     #[test]
@@ -671,21 +740,47 @@ mod tests {
         atari.memory[0x1210] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
-        atari.ldy(Mode::ABS, 0);
+        let pc = atari.ldy(Mode::ABS, 0);
         assert_eq!(atari.y_reg, expected);
+        assert_eq!(atari.cycles, 4);
+        assert_eq!(pc, 3);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
     #[test]
-    fn test_ldy_absy() {
+    fn test_ldy_absx() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
+        atari.memory[0x0010+5] = expected;
+        atari.memory[1]    = 0x10;
+        atari.memory[2]    = 0x00;
+        atari.x_reg = 5;
+        let pc = atari.ldy(Mode::ABSX, 0);
+        assert_eq!(atari.y_reg, expected);
+        assert_eq!(atari.cycles, 4);
+        assert_eq!(pc, 3);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
+    }
+
+    #[test]
+    fn test_ldx_absx_page_boundary() {
         let mut atari = setup_atari();
         let expected = 0x9;
         atari.memory[0x1210+5] = expected;
         atari.memory[1]    = 0x10;
         atari.memory[2]    = 0x12;
         atari.x_reg = 5;
-        atari.ldy(Mode::ABSX, 0);
+        let pc = atari.ldy(Mode::ABSX, 0);
         assert_eq!(atari.y_reg, expected);
+        assert_eq!(atari.cycles, 5);
+        assert_eq!(pc, 3);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
+
+    /* #endregion */
 
     #[test]
     #[should_panic(expected = "INVALID ADDRESSING MODE!!!")]
@@ -697,46 +792,58 @@ mod tests {
    #[test]
    fn test_sec() {
       let mut atari = setup_atari();
-      atari.sec(0);
+      let pc = atari.sec(0);
       assert_eq!(atari.read_flag(Flag::CARRY), true);
+      assert_eq!(1, pc);
+      assert_eq!(atari.cycles, 2);
    }
 
    #[test]
    fn test_cli() {
       let mut atari = setup_atari();
       atari.write_flag(FlagWriter::IRQD, true);
-      atari.cli(0);
+      let pc = atari.cli(0);
       assert_eq!(atari.read_flag(Flag::IRQD), false);
+      assert_eq!(1, pc);
+      assert_eq!(atari.cycles, 2);
    }
 
    #[test]
    fn test_sei() {
       let mut atari = setup_atari();
-      atari.sei(0);
+      let pc = atari.sei(0);
       assert_eq!(atari.read_flag(Flag::IRQD), true);
+      assert_eq!(1, pc);
+      assert_eq!(atari.cycles, 2);
    }
 
    #[test]
    fn test_clv() {
       let mut atari = setup_atari();
       atari.write_flag(FlagWriter::OVER, true);
-      atari.clv(0);
+      let pc = atari.clv(0);
       assert_eq!(atari.read_flag(Flag::OVER), false);
+      assert_eq!(1, pc);
+      assert_eq!(atari.cycles, 2);
    }
 
    #[test]
    fn test_cld() {
       let mut atari = setup_atari();
       atari.write_flag(FlagWriter::DEC, true);
-      atari.cld(0);
+      let pc = atari.cld(0);
       assert_eq!(atari.read_flag(Flag::DEC), false);
+      assert_eq!(1, pc);
+      assert_eq!(atari.cycles, 2);
    }
 
    #[test]
    fn test_sed() {
       let mut atari = setup_atari();
-      atari.sed(0);
+      let pc = atari.sed(0);
       assert_eq!(atari.read_flag(Flag::DEC), true);
+      assert_eq!(1, pc);
+      assert_eq!(atari.cycles, 2);
    }
 
    #[test]
@@ -755,11 +862,54 @@ mod tests {
       assert_eq!(atari.x_reg, 0x12);
    }
 
+   /* #region utility functions tests */
+
    #[test]
    fn test_translate_for_tia() {
       let mut atari = setup_atari();
       let result = atari.translate_for_tia(0xEF3F);
       assert_eq!(result, 0x3F);
    }
+
+   #[test]
+   fn test_set_flag_neg_false() {
+      let mut atari = setup_atari();
+      let value = 0x12;
+      atari.set_flag_neg(value);
+      assert_eq!(atari.read_flag(Flag::NEG), false);
+   }
+
+   #[test]
+   fn test_set_flag_neg_true() {
+      let mut atari = setup_atari();
+      let value = 0x40;
+      atari.set_flag_neg(value);
+      assert_eq!(atari.read_flag(Flag::NEG), true);
+      let value = 0xFF;
+      atari.set_flag_neg(value);
+      assert_eq!(atari.read_flag(Flag::NEG), true);
+   }
+
+   #[test]
+   fn test_set_flag_zero_false() {
+      let mut atari = setup_atari();
+      let value = 0x12;
+      atari.set_flag_zero(value);
+      assert_eq!(atari.read_flag(Flag::ZERO), false);
+      let value = 0xFF;
+      atari.set_flag_zero(value);
+      assert_eq!(atari.read_flag(Flag::ZERO), false);
+   }
+
+   #[test]
+   fn test_set_flag_zero_true() {
+      let mut atari = setup_atari();
+      let value = 0x00;
+      atari.set_flag_zero(value);
+      assert_eq!(atari.read_flag(Flag::ZERO), true);
+   }
+
+   /* #endregion */
+
 
 }
