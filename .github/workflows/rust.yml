@@ -19,8 +19,8 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      working-directory: ./rust-ari
+      working-directory: ./rust_ari
       run: cargo build --verbose
     - name: Run tests
-      working-directory: ./rust-ari
+      working-directory: ./rust_ari
       run: cargo test --verbose
