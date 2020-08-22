@@ -51,11 +51,11 @@ enum FlagWriter {
  
  impl Atari {
 
-    pub fn new(memory : [u8; 0x1FFF]) -> Atari { 
+    pub fn new(memory : [u8; 0x1FFF], pc: usize) -> Atari { 
         Atari { 
             memory: memory,
             flags: 0,
-            pc: 0,
+            pc: pc,
             x_reg: 0,
             y_reg: 0,
             a_reg: 0,
@@ -64,7 +64,7 @@ enum FlagWriter {
         }
     }
 
-    /* #region Memory helpers */
+    /* #region Utility functions */
     pub fn read_mem(&self, cell : usize) -> u8 {
        return self.memory[cell];
     }
@@ -89,9 +89,59 @@ enum FlagWriter {
           self.flags &= !fw;
        }
     }
+
+     
+    fn set_flag_zero(&mut self, val : u8) {
+      if val == 0 {
+         self.write_flag(FlagWriter::ZERO, true);
+      } else {
+         self.write_flag(FlagWriter::ZERO, false);
+      }
+   }
+
+   fn set_flag_neg(&mut self, val : u8) {
+      if val >= 0x40 {
+         self.write_flag(FlagWriter::NEG, true);
+      } else {
+         self.write_flag(FlagWriter::NEG, false);
+      }
+   }
+
+   fn abs_addr (&mut self, pc : usize) -> usize {
+      let p2 : u16 = self.read_mem(pc+1) as u16;
+      let p1 : u16 = self.read_mem(pc+2) as u16;
+      let target_loc : u16 = p1 << 8 | p2;
+      return self.translate_addr(target_loc) as usize;
+   }
+   fn abs_addr_y (&mut self, pc : usize) -> usize {
+      let p2 : u16 = self.read_mem(pc+1) as u16;
+      let p1 : u16 = self.read_mem(pc+2) as u16;
+      let target_loc : u16 = self.translate_addr(p1 << 8 | p2);
+      let y_reg : u16 = self.y_reg as u16;
+      return (target_loc + y_reg) as usize;
+   }
+   fn abs_addr_x (&mut self, pc : usize) -> usize {
+      let p2 : u16 = self.read_mem(pc+1) as u16;
+      let p1 : u16 = self.read_mem(pc+2) as u16;
+      let target_loc : u16 = p1 << 8 | p2;
+      let x_reg : u16 = self.x_reg as u16;
+      return (target_loc + x_reg) as usize;
+   }
+   fn translate_addr(&mut self, mut addr : u16) -> u16
+   {
+      addr &= 0b0001_1111_1111_1111;
+      return addr;
+   }
+   fn translate_for_tia(&mut self, mut addr : u16) -> u16
+   {
+      addr &= 0b0001_0000_1011_1111;
+      return addr;
+   }
     
     /* #endregion */
- 
+   
+    /* #region Step Executor */
+
     pub fn execute_step(&mut self) {
  
        let pc = self.pc;
@@ -162,55 +212,9 @@ enum FlagWriter {
           return;
        }
     }
+   /* #endregion */
  
-    fn set_flag_zero(&mut self, val : u8) {
-       if val == 0 {
-          self.write_flag(FlagWriter::ZERO, true);
-       } else {
-          self.write_flag(FlagWriter::ZERO, false);
-       }
-    }
- 
-    fn set_flag_neg(&mut self, val : u8) {
-       if val >= 0x40 {
-          self.write_flag(FlagWriter::NEG, true);
-       } else {
-          self.write_flag(FlagWriter::NEG, false);
-       }
-    }
- 
-    fn abs_addr (&mut self, pc : usize) -> usize {
-       let p2 : u16 = self.read_mem(pc+1) as u16;
-       let p1 : u16 = self.read_mem(pc+2) as u16;
-       let target_loc : u16 = p1 << 8 | p2;
-       return self.translate_addr(target_loc) as usize;
-    }
-    fn abs_addr_y (&mut self, pc : usize) -> usize {
-       let p2 : u16 = self.read_mem(pc+1) as u16;
-       let p1 : u16 = self.read_mem(pc+2) as u16;
-       let target_loc : u16 = self.translate_addr(p1 << 8 | p2);
-       let y_reg : u16 = self.y_reg as u16;
-       return (target_loc + y_reg) as usize;
-    }
-    fn abs_addr_x (&mut self, pc : usize) -> usize {
-       let p2 : u16 = self.read_mem(pc+1) as u16;
-       let p1 : u16 = self.read_mem(pc+2) as u16;
-       let target_loc : u16 = p1 << 8 | p2;
-       let x_reg : u16 = self.x_reg as u16;
-       return (target_loc + x_reg) as usize;
-    }
-    fn translate_addr(&mut self, mut addr : u16) -> u16
-    {
-       addr &= 0b0001_1111_1111_1111;
-       return addr;
-    }
-    fn translate_for_tia(&mut self, mut addr : u16) -> u16
-    {
-       addr &= 0b0001_0000_1011_1111;
-       return addr;
-    }
- 
-     /* #region ADC (Add with carry) Instruction */
+   /* #region ADC (Add with carry) Instruction */
  
     fn adc(&mut self, value: u8) {
        let mut result: u16 = self.a_reg as u16 + value as u16;
@@ -236,6 +240,8 @@ enum FlagWriter {
        // self.flag_set_if(status_flags::CARRY, result > 0xff);
        // self.flag_set_if(status_flags::OVER, result >= 128);
    }
+
+   /* #endregion */
  
     /* #region Flag (Processor Status) Instructions */
     fn sei(&mut self, pc : usize) -> usize {
@@ -407,10 +413,20 @@ enum FlagWriter {
        self.cycles += match mode {
           Mode::IMM => 2,
           Mode::ZP => 3,
+          Mode::ABSX | Mode::ABSY => (
+            if target_loc < 0xFF
+            {
+               4
+            } else
+            {
+               5
+            }
+         ),
           _ => 4
        };
  
-       //self.set_flags(self.a_reg);
+       self.set_flag_zero(self.a_reg);
+       self.set_flag_neg(self.a_reg);
        return pc;
     }
     /* #endregion */
@@ -470,7 +486,8 @@ enum FlagWriter {
     }
     /* #endregion */
  
-     /* #region Register Instructions */
+   /* #region Register Instructions */
+
      fn tax(&mut self, pc : usize) -> usize {
        ////println!("TAX");
        self.x_reg = self.a_reg;
@@ -489,14 +506,15 @@ enum FlagWriter {
     }
     fn dex(&mut self, pc : usize) -> usize {
        ////println!("DEX");
-       println!("{}",self.x_reg);
+       //println!("{}",self.x_reg);
        if self.x_reg == 0 {
           self.x_reg = 0xFF;
        }
        else {
           self.x_reg -= 1;
        }
-       //self.set_flags(self.x_reg);
+       self.set_flag_zero(self.x_reg);
+       self.set_flag_neg(self.x_reg);
        self.cycles += 2;
        return pc + 1;
     }
@@ -780,8 +798,6 @@ mod tests {
         assert_eq!(atari.read_flag(Flag::ZERO), false);
     }
 
-    /* #endregion */
-
     #[test]
     #[should_panic(expected = "INVALID ADDRESSING MODE!!!")]
     fn test_ldy_invalid_mode() {
@@ -789,6 +805,142 @@ mod tests {
         atari.ldy(Mode::ABSY, 0);
     }
 
+   /* #endregion */
+
+   /* #region lda tests */
+   #[test]
+   fn test_lda_imm() {
+       let mut atari = setup_atari();
+       let expected = 0x10;
+       atari.memory[1] = expected;
+       let pc = atari.lda(Mode::IMM, 0);
+       assert_eq!(atari.a_reg, expected);
+       assert_eq!(pc, 2);
+       assert_eq!(atari.cycles, 2);
+       assert_eq!(atari.read_flag(Flag::NEG), false);
+       assert_eq!(atari.read_flag(Flag::ZERO), false);
+   }
+
+   #[test]
+   fn test_lda_zp() {
+       let mut atari = setup_atari();
+       let expected = 0x12;
+       atari.memory[0x10] = expected;
+       atari.memory[1]    = 0x10;
+       let pc = atari.lda(Mode::ZP, 0);
+       assert_eq!(atari.a_reg, expected);
+       assert_eq!(pc, 2);
+       assert_eq!(atari.cycles, 3);
+       assert_eq!(atari.read_flag(Flag::NEG), false);
+       assert_eq!(atari.read_flag(Flag::ZERO), false);
+   }
+
+   #[test]
+    fn test_lda_zpx() {
+        let mut atari = setup_atari();
+        let expected = 0x9;
+        atari.memory[0x10+5] = expected;
+        atari.memory[0x10] = 0x12;
+        atari.memory[1]    = 0x10;
+        atari.x_reg         = 5;
+        let pc = atari.lda(Mode::ZPX, 0);
+        assert_eq!(atari.a_reg, expected);
+        assert_eq!(atari.cycles, 4);
+        assert_eq!(pc, 2);
+        assert_eq!(atari.read_flag(Flag::NEG), false);
+        assert_eq!(atari.read_flag(Flag::ZERO), false);
+    }
+
+   #[test]
+   fn test_lda_abs() {
+       let mut atari = setup_atari();
+       let expected = 0x9;
+       atari.memory[0x1210] = expected;
+       atari.memory[1]    = 0x10;
+       atari.memory[2]    = 0x12;
+       let pc = atari.lda(Mode::ABS, 0);
+       assert_eq!(atari.a_reg, expected);
+       assert_eq!(atari.cycles, 4);
+       assert_eq!(pc, 3);
+       assert_eq!(atari.read_flag(Flag::NEG), false);
+       assert_eq!(atari.read_flag(Flag::ZERO), false);
+   }
+
+   #[test]
+   fn test_lda_absy() {
+       let mut atari = setup_atari();
+       let expected = 0x9;
+       atari.memory[0x0010+5] = expected;
+       atari.memory[1]    = 0x10;
+       atari.memory[2]    = 0x00;
+       atari.y_reg = 5;
+       let pc = atari.lda(Mode::ABSY, 0);
+       assert_eq!(atari.a_reg, expected);
+       assert_eq!(atari.cycles, 4);
+       assert_eq!(pc, 3);
+       assert_eq!(atari.read_flag(Flag::NEG), false);
+       assert_eq!(atari.read_flag(Flag::ZERO), false);
+   }
+
+   #[test]
+   fn test_lda_absy_page_boundary() {
+       let mut atari = setup_atari();
+       let expected = 0x9;
+       atari.memory[0x1210+5] = expected;
+       atari.memory[1]    = 0x10;
+       atari.memory[2]    = 0x12;
+       atari.y_reg = 5;
+       let pc = atari.lda(Mode::ABSY, 0);
+       assert_eq!(atari.a_reg, expected);
+       assert_eq!(atari.cycles, 5);
+       assert_eq!(pc, 3);
+       assert_eq!(atari.read_flag(Flag::NEG), false);
+       assert_eq!(atari.read_flag(Flag::ZERO), false);
+   }
+
+   #[test]
+   fn test_lda_absx() {
+       let mut atari = setup_atari();
+       let expected = 0x9;
+       atari.memory[0x0010+5] = expected;
+       atari.memory[1]    = 0x10;
+       atari.memory[2]    = 0x00;
+       atari.x_reg = 5;
+       let pc = atari.lda(Mode::ABSX, 0);
+       assert_eq!(atari.a_reg, expected);
+       assert_eq!(atari.cycles, 4);
+       assert_eq!(pc, 3);
+       assert_eq!(atari.read_flag(Flag::NEG), false);
+       assert_eq!(atari.read_flag(Flag::ZERO), false);
+   }
+
+   #[test]
+   fn test_lda_absx_page_boundary() {
+       let mut atari = setup_atari();
+       let expected = 0x9;
+       atari.memory[0x1210+5] = expected;
+       atari.memory[1]    = 0x10;
+       atari.memory[2]    = 0x12;
+       atari.x_reg = 5;
+       let pc = atari.lda(Mode::ABSX, 0);
+       assert_eq!(atari.a_reg, expected);
+       assert_eq!(atari.cycles, 5);
+       assert_eq!(pc, 3);
+       assert_eq!(atari.read_flag(Flag::NEG), false);
+       assert_eq!(atari.read_flag(Flag::ZERO), false);
+   }
+
+   #[test]
+   #[should_panic(expected = "INVALID ADDRESSING MODE!!!")]
+   fn test_lda_invalid_mode() {
+       let mut atari = setup_atari();
+       atari.lda(Mode::ZPY, 0);
+   }
+
+   /* #endregion */
+
+
+   /* #region Flag (Processor Status) Instructions tests */
    #[test]
    fn test_sec() {
       let mut atari = setup_atari();
@@ -861,7 +1013,8 @@ mod tests {
       atari.tsx(0);
       assert_eq!(atari.x_reg, 0x12);
    }
-
+   /* #endregion */
+   
    /* #region utility functions tests */
 
    #[test]

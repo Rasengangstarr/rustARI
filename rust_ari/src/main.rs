@@ -94,7 +94,7 @@ fn main() {
    //println!("reading file: {}", filename);
 
    let rom = rom_read::get_file_as_byte_vec(filename);
-   let atari : atari::Atari = atari::Atari::new(mem_load::write_rom_to_mem(rom));
+   let atari : atari::Atari = atari::Atari::new(mem_load::write_rom_to_mem(rom), 0x1000);
    main_loop(atari).unwrap();
 }
 
