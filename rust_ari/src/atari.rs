@@ -939,6 +939,78 @@ mod tests {
 
    /* #endregion */
 
+/* #region sta tests */
+
+#[test]
+fn test_sta_zp() {
+    let mut atari = setup_atari();
+    atari.memory[1]    = 0x10;
+    atari.a_reg = 0x15;
+    let pc = atari.sta(Mode::ZP, 0);
+    assert_eq!(atari.read_mem(0x10), atari.a_reg);
+    assert_eq!(pc, 2);
+    assert_eq!(atari.cycles, 3);
+}
+
+#[test]
+ fn test_sta_zpx() {
+     let mut atari = setup_atari();
+     atari.memory[1]    = 0x10;
+     atari.x_reg         = 5;
+     atari.a_reg = 0x11;
+     let pc = atari.sta(Mode::ZPX, 0);
+     assert_eq!(atari.read_mem(0x15), atari.a_reg);
+     assert_eq!(atari.cycles, 4);
+     assert_eq!(pc, 2);
+ }
+
+#[test]
+fn test_sta_abs() {
+    let mut atari = setup_atari();
+    atari.memory[1]    = 0x10;
+    atari.memory[2]    = 0x12;
+    atari.a_reg = 0x11;
+    let pc = atari.sta(Mode::ABS, 0);
+    assert_eq!(atari.a_reg, atari.read_mem(0x1210));
+    assert_eq!(atari.cycles, 4);
+    assert_eq!(pc, 3);
+}
+
+#[test]
+fn test_sta_absy() {
+   let mut atari = setup_atari();
+   atari.memory[1]    = 0x10;
+   atari.memory[2]    = 0x12;
+   atari.y_reg = 0x12;
+   atari.a_reg = 0x11;
+   let pc = atari.sta(Mode::ABSY, 0);
+   assert_eq!(atari.a_reg, atari.read_mem(0x1222));
+   assert_eq!(atari.cycles, 5);
+   assert_eq!(pc, 3);
+}
+
+#[test]
+fn test_sta_absx() {
+   let mut atari = setup_atari();
+   atari.memory[1]    = 0x10;
+   atari.memory[2]    = 0x12;
+   atari.x_reg = 0x12;
+   atari.a_reg = 0x11;
+   let pc = atari.sta(Mode::ABSX, 0);
+   assert_eq!(atari.a_reg, atari.read_mem(0x1222));
+   assert_eq!(atari.cycles, 5);
+   assert_eq!(pc, 3);
+}
+
+// #[test]
+// #[should_panic(expected = "INVALID ADDRESSING MODE!!!")]
+// fn test_lda_invalid_mode() {
+//     let mut atari = setup_atari();
+//     atari.lda(Mode::ZPY, 0);
+// }
+
+/* #endregion */
+
 
    /* #region Flag (Processor Status) Instructions tests */
    #[test]
